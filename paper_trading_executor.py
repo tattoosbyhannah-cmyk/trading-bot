@@ -28,7 +28,7 @@ from brokers.base_broker import OrderRequest, OrderSide, OrderType, OrderStatus
 from master_orchestrator import run_complete_trading_analysis, MasterTradingDecision
 from trading_dashboard import TradingPerformanceDB
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parent / '.env' if (Path(__file__).resolve().parent / '.env').exists() else None)
 
 # ── Kill Switch ──────────────────────────────────────────────────────────────
 

@@ -1,6 +1,11 @@
+# DEPRECATED — not used in production. Daily pipeline uses
+# majority_vote_orchestrator.py → master_orchestrator.py.
+# Kept for reference only. Contains stale patterns (hardcoded LLM, no ATR stops).
 """
 Parallel Master Orchestrator — runs agents simultaneously for maximum speed.
 Parallelizes both across assets AND within each asset analysis.
+
+DEPRECATED: See majority_vote_orchestrator.py for the production pipeline.
 """
 
 from typing import TypedDict, Optional, List
@@ -242,6 +247,6 @@ if __name__ == "__main__":
         symbols = sys.argv[1].split(',')
     else:
         # Default: commodity ETFs
-        symbols = ["USO", "GLD", "UNG", "SLV", "DBA"]
+        symbols = ["USO", "GLD", "UNG"]
     
     decisions = run_multi_asset_parallel_scan(symbols, max_workers=8)

@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 import chromadb
 from agent_logger import log_agent_call
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parent / '.env' if (Path(__file__).resolve().parent / '.env').exists() else None)
 
 # Initialize ChromaDB for risk management literature
 client = chromadb.PersistentClient(path="./chromadb-data")

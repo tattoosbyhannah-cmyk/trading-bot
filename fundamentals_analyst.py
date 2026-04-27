@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 from langgraph.graph import StateGraph, END
 from agent_logger import log_agent_call
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parent / '.env' if (Path(__file__).resolve().parent / '.env').exists() else None)
 
 
 # ── Symbol → Asset Class Routing (from instrument registry) ──────────────────

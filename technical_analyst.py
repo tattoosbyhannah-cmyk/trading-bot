@@ -17,7 +17,7 @@ from alpaca.data.timeframe import TimeFrame
 from langgraph.graph import StateGraph, END
 from agent_logger import log_agent_call
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parent / '.env' if (Path(__file__).resolve().parent / '.env').exists() else None)
 
 
 class TechnicalReport(BaseModel):

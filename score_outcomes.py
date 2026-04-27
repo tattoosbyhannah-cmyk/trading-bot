@@ -25,7 +25,7 @@ from typing import Optional
 
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parent / '.env' if (Path(__file__).resolve().parent / '.env').exists() else None)
 
 OUTCOMES_LOG = Path(__file__).parent / "logs" / "decision_outcomes.jsonl"
 HORIZONS = [1, 5, 30]  # Calendar-day horizons to score
@@ -38,7 +38,11 @@ def _read_records() -> list:
 
 
 def _write_records(records: list):
-    """Write updated records back to both JSONL and Postgres."""
+    """Write updated records back to both JSONL and Postgres.
+
+    Full JSONL rewrite keeps it in sync with Postgres (source of truth).
+    This is intentional — JSONL is the fallback mirror, not the primary store.
+    """
     # JSONL full rewrite
     OUTCOMES_LOG.parent.mkdir(exist_ok=True)
     with open(OUTCOMES_LOG, "w") as f:
@@ -168,8 +172,9 @@ def _score_record(record: dict) -> bool:
     # Bars are sorted by date; bar index = trading day count from entry.
     updated = False
     for h in horizons_to_score:
-        # Use bars[h-1] as the "h-day" close — h trading days after entry.
-        # (Approximating calendar vs trading days; weekends skipped naturally.)
+        # NOTE: horizons are in TRADING days, not calendar days.
+        # 1d = next trading day, 5d ≈ 1 week, 30d ≈ 6 weeks.
+        # Weekends/holidays skipped naturally since Alpaca only returns trading days.
         if len(bars) >= h:
             exit_price = bars[h - 1]["close"]
             record[f"price_{h}d"] = round(exit_price, 2)
@@ -304,7 +309,7 @@ def report():
 
     # Per-horizon accuracy and returns
     print(f"\n{'─'*70}")
-    print(f"DIRECTIONAL PERFORMANCE (LONG + SHORT, excludes HOLD)")
+    print(f"DIRECTIONAL PERFORMANCE (trading-day horizons, excludes HOLD)")
     print(f"{'─'*70}")
     directional = [r for r in scored if r["decision"] in ("LONG", "SHORT")]
     for h in HORIZONS:

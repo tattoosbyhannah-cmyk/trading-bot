@@ -22,7 +22,7 @@ from alpaca.data.requests import NewsRequest
 from fundamentals_analyst import asset_class
 from agent_logger import log_agent_call
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parent / '.env' if (Path(__file__).resolve().parent / '.env').exists() else None)
 
 
 # ── Part 1: Asset Group Query Mapping ────────────────────────────────────────

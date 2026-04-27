@@ -23,7 +23,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parent / '.env' if (Path(__file__).resolve().parent / '.env').exists() else None)
 
 RATCHET_LOG = Path(__file__).parent / "logs" / "stop_ratchets.jsonl"
 OUTCOMES_LOG = Path(__file__).parent / "logs" / "decision_outcomes.jsonl"

@@ -1,12 +1,17 @@
 """
 Majority-of-3 Voting Wrapper for Master Trading Orchestrator.
 
-Runs the full pipeline N times (default 3), extracts the directional decision
-(LONG/SHORT/HOLD) from each run, takes the majority vote, and returns the
-winning decision along with all individual run results.
+Runs the full pipeline 3 times (default) with varied parameters per run:
+  Run 1: temp=0.6, 5 RAG chunks, bull-first debate
+  Run 2: temp=0.8, 8 RAG chunks, bull-first debate
+  Run 3: temp=0.7, 6 RAG chunks, bear-first debate
+
+Extracts the directional decision (LONG/SHORT/HOLD) from each run,
+takes the majority vote, and returns the winning decision.
 
 Usage:
     python3 majority_vote_orchestrator.py USO
+    python3 majority_vote_orchestrator.py USO --execute
     python3 majority_vote_orchestrator.py USO --runs 5
 """
 
