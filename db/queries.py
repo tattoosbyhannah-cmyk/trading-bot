@@ -9,7 +9,7 @@ DB column names (e.g. created_at) to canonical keys (e.g. timestamp).
 """
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 LOGS = Path(__file__).resolve().parent.parent / "logs"
@@ -38,7 +38,7 @@ def _fetch_rows(sql: str, params: tuple = ()) -> list:
 def load_recent_decisions(symbol: str, days: int = 3) -> list:
     """Load recent decisions. SQL first, JSONL fallback."""
     try:
-        cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         rows = _fetch_rows("""
             SELECT decision_id, calculation_run_id, symbol, decision,
                    confidence, entry_price, stop_loss, stop_loss_pct,
@@ -257,7 +257,46 @@ def load_ratchets_by_calc_id(calc_id: str) -> list:
     return results
 
 
-# ── 8. Today's agent call counts ─────────────────────────────────────────────
+# ── 8. Latest calculation_run_id ──────────────────────────────────────────────
+
+def find_latest_calc_id(symbol: str = None) -> str:
+    """Find the most recent calculation_run_id. SQL first, JSONL fallback."""
+    try:
+        if symbol:
+            rows = _fetch_rows("""
+                SELECT calculation_run_id FROM decisions
+                WHERE symbol = %s AND calculation_run_id IS NOT NULL
+                ORDER BY created_at DESC LIMIT 1
+            """, (symbol.upper(),))
+        else:
+            rows = _fetch_rows("""
+                SELECT calculation_run_id FROM decisions
+                WHERE calculation_run_id IS NOT NULL
+                ORDER BY created_at DESC LIMIT 1
+            """)
+        if rows and rows[0].get("calculation_run_id"):
+            return rows[0]["calculation_run_id"]
+    except Exception:
+        pass
+
+    # JSONL fallback
+    path = LOGS / "decision_outcomes.jsonl"
+    if not path.exists():
+        return ""
+    for line in reversed(path.read_text().strip().split("\n")):
+        if not line:
+            continue
+        try:
+            r = json.loads(line)
+            cid = r.get("calculation_run_id", "")
+            if cid and (not symbol or r.get("symbol") == symbol.upper()):
+                return cid
+        except Exception:
+            continue
+    return ""
+
+
+# ── 9. Today's agent call counts ─────────────────────────────────────────────
 
 def load_todays_agent_calls() -> list:
     """Load today's agent calls for health check."""

@@ -35,14 +35,22 @@ _DB_TO_CANONICAL = {
 
 
 def _normalize_row(row: dict) -> dict:
-    """Translate DB column names to the canonical keys the orchestrator expects."""
+    """Translate DB column names and types to canonical forms.
+
+    Column renames: created_at → timestamp (via _DB_TO_CANONICAL)
+    Type coercions: Decimal → float, datetime → ISO string (for timestamp key)
+    """
     if row is None:
         return None
+    from decimal import Decimal
     out = {}
     for k, v in row.items():
         canon = _DB_TO_CANONICAL.get(k, k)
-        # Convert datetime objects to ISO strings
-        if hasattr(v, "isoformat") and canon == "timestamp":
+        # Coerce Decimal → float at the boundary (all NUMERIC columns)
+        if isinstance(v, Decimal):
+            v = float(v)
+        # Convert datetime objects to ISO strings for the timestamp key
+        elif hasattr(v, "isoformat") and canon == "timestamp":
             v = v.isoformat()
         out[canon] = v
     return out

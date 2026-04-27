@@ -44,29 +44,13 @@ def _search_logs(calc_id: str) -> dict:
 
 
 def _find_latest_id(symbol: str = None) -> str:
-    """Find the most recent calculation_run_id. SQL first."""
-    try:
-        from db.connection import db_cursor
-        with db_cursor(commit=False) as cur:
-            if symbol:
-                cur.execute("""
-                    SELECT calculation_run_id FROM decisions
-                    WHERE symbol = %s AND calculation_run_id IS NOT NULL
-                    ORDER BY created_at DESC LIMIT 1
-                """, (symbol.upper(),))
-            else:
-                cur.execute("""
-                    SELECT calculation_run_id FROM decisions
-                    WHERE calculation_run_id IS NOT NULL
-                    ORDER BY created_at DESC LIMIT 1
-                """)
-            row = cur.fetchone()
-            if row and row[0]:
-                return row[0]
-    except Exception:
-        pass
+    """Find the most recent calculation_run_id. Delegates to db.queries."""
+    from db.queries import find_latest_calc_id
+    result = find_latest_calc_id(symbol)
+    if result:
+        return result
 
-    # JSONL fallback
+    # Extra JSONL fallback
     path = LOG_FILES["decisions"]
     if not path.exists():
         return ""

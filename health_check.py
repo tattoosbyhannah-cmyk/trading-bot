@@ -12,7 +12,7 @@ import os
 import re
 import subprocess
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
@@ -23,7 +23,7 @@ load_dotenv(Path(__file__).resolve().parent / '.env' if (Path(__file__).resolve(
 BOTDIR = Path(__file__).parent
 LOGS = BOTDIR / "logs"
 TODAY = datetime.now().strftime("%Y-%m-%d")
-NOW = datetime.now()
+NOW = datetime.now(timezone.utc)
 WEEKDAY = NOW.weekday() < 5  # Mon-Fri
 
 
@@ -157,9 +157,9 @@ def check_daily_pipeline() -> Check:
                 pass
 
     if last_ts:
-        # Strip timezone info for comparison with naive NOW
-        if last_ts.tzinfo is not None:
-            last_ts = last_ts.replace(tzinfo=None)
+        # Promote naive timestamps to UTC for safe comparison
+        if last_ts.tzinfo is None:
+            last_ts = last_ts.replace(tzinfo=timezone.utc)
         age_hours = (NOW - last_ts).total_seconds() / 3600
         if age_hours > 26 and WEEKDAY:
             c.warn(f"Last run: {last_ts.strftime('%Y-%m-%d %H:%M')} ({age_hours:.0f}h ago)")

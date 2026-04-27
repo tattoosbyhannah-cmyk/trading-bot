@@ -83,7 +83,9 @@
       "Bash(ls *.db)",
       "Bash(rm -f ions \"ions by direction:\")",
       "Bash(mkdir -p deprecated)",
-      "Bash(mv fast_options_scanner.py fast_options_scanner_v2.py optimized_scanner.py multi_asset_scanner.py deprecated/)"
+      "Bash(mv fast_options_scanner.py fast_options_scanner_v2.py optimized_scanner.py multi_asset_scanner.py deprecated/)",
+      "Bash(grep -rn \"^load_dotenv\\(\\)$\" --include=\"*.py\")",
+      "Bash(python3 majority_vote_orchestrator.py USO)"
     ]
   }
 }

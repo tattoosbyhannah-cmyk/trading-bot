@@ -18,7 +18,7 @@ Usage:
 import json
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from statistics import mean, median
 from typing import Optional
@@ -147,7 +147,7 @@ def _score_record(record: dict) -> bool:
         return False
 
     # Determine which horizons are eligible based on calendar-day age.
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     age_days = (now - ts).days
     horizons_to_score = [h for h in HORIZONS if age_days >= h]
     if not horizons_to_score:
@@ -229,7 +229,7 @@ def _score_record(record: dict) -> bool:
                 pass
 
     if updated:
-        record["scored_at"] = datetime.now().isoformat()
+        record["scored_at"] = datetime.now(timezone.utc).isoformat()
 
     return updated
 
@@ -237,7 +237,7 @@ def _score_record(record: dict) -> bool:
 def _is_fully_scored(record: dict) -> bool:
     """Check if all applicable horizons have been scored."""
     ts = datetime.fromisoformat(record["timestamp"])
-    age_days = (datetime.now() - ts).days
+    age_days = (datetime.now(timezone.utc) - ts).days
     applicable = [h for h in HORIZONS if age_days >= h]
     if not applicable:
         return True  # Nothing to score yet
