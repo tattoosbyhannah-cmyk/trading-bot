@@ -15,6 +15,7 @@ Each asset class implements its own fetch/compute/prompt trio.
 
 import os
 import requests
+from pathlib import Path
 from typing import TypedDict, Optional, Literal
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field

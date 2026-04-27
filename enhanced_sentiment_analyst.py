@@ -12,6 +12,7 @@ top headlines are logged to agent_calls.jsonl for coverage auditing.
 import logging
 from typing import TypedDict, Optional, Literal, List
 from datetime import datetime, timedelta
+from pathlib import Path
 from pydantic import BaseModel, Field
 import os
 from dotenv import load_dotenv

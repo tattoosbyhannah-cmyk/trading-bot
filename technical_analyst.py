@@ -5,6 +5,7 @@ Uses structured output via Pydantic + LangChain's with_structured_output.
 
 import os
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import TypedDict, Optional, Literal
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
