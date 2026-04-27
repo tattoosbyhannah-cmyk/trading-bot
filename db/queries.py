@@ -41,7 +41,15 @@ def load_recent_decisions(symbol: str, days: int = 3) -> list:
             cols = [d[0] for d in cur.description]
             rows = cur.fetchall()
             if rows:
-                return [dict(zip(cols, row)) for row in rows]
+                results = []
+                for row in rows:
+                    d = dict(zip(cols, row))
+                    # Normalize created_at → timestamp for JSONL compat
+                    if "created_at" in d and "timestamp" not in d:
+                        ca = d["created_at"]
+                        d["timestamp"] = ca.isoformat() if hasattr(ca, "isoformat") else str(ca)
+                    results.append(d)
+                return results
     except Exception:
         pass
 
