@@ -1,8 +1,41 @@
+# Environment
 .env
+
+# Python
 venv/
 __pycache__/
 *.pyc
+*.pyo
+*.egg-info/
+
+# Logs (tracked via Postgres, not git)
 logs/
-chromadb-data*/
+
+# Databases
+*.db
+chromadb-data/
+chromadb-data.backup-*/
+
+# Models (large binary files)
+*.gguf
+
+# RAG source files (PDFs/EPUBs — content is in Postgres)
+rag-wave-*/
+RAG Wave*/
+
+# Planning docs
+*.odt
+next steps*
+docs/
+
+# Generated files
+playbook/
 *.backup-*
 *.pre-*
+*.working
+*.bak
+
+# Temp / OS
+*.tmp
+*~
+.DS_Store

@@ -433,22 +433,20 @@ Include current market price context and specific entry/exit levels in your reco
     if not llm_out.symbol:
         llm_out.symbol = symbol
 
-    # Fix 2: Deterministic position sizing from risk score
-    # LLM picks APPROVE/MODIFY/REJECT + risk_score; Python computes final size
-    base_size = risk.position_size_pct  # From risk gatekeeper
+    # Position sizing already handled by risk gatekeeper (risk_score → scaling)
+    # Just pass through the gatekeeper's final number
     if risk.approval_status == "REJECTED":
         final_position_size = 0.0
-    elif risk.risk_score >= 8:
-        final_position_size = base_size * 0.25  # ~1.25% at base 5%
-    elif risk.risk_score >= 6:
-        final_position_size = base_size * 0.5   # ~2.5%
-    elif risk.risk_score >= 4:
-        final_position_size = base_size * 0.75  # ~3.75%
     else:
-        final_position_size = base_size          # full 5%
+        final_position_size = risk.position_size_pct
 
-    # Fix 1: Python computes price levels from LLM percentages
-    # Fix 5: entry_price ALWAYS from Alpaca, never from LLM
+    # Bug 6 fix: Override LLM's stop_loss_pct with deterministic ATR-based stop
+    # risk.stop_loss_pct was computed as round(atr_pct * 2, 1) clamped to 2-15%
+    # The LLM should not control stop distance — only Python does math
+    llm_out.stop_loss_pct = risk.stop_loss_pct
+
+    # Python computes price levels from percentages
+    # entry_price ALWAYS from Alpaca, never from LLM
     decision = _compute_price_levels(llm_out, current_price, final_position_size)
     decision.timestamp = datetime.now().isoformat()
 

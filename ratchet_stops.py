@@ -186,8 +186,16 @@ def ratchet_all(dry_run: bool = False) -> int:
                 "reason": reason,
             })
 
-            # Update the decision record with the new stop
+            # Update the decision record (JSONL + Postgres)
             _update_decision_stop(symbol, new_stop)
+
+            # Submit the new stop order to the broker
+            try:
+                from paper_trading_executor import PaperTradingManager
+                manager = PaperTradingManager()
+                manager.set_stop_loss(symbol, new_stop)
+            except Exception as e:
+                print(f"  [RATCHET] Warning: broker stop update failed: {e}")
 
         ratcheted += 1
 
@@ -195,7 +203,19 @@ def ratchet_all(dry_run: bool = False) -> int:
 
 
 def _update_decision_stop(symbol: str, new_stop: float):
-    """Update the most recent decision's stop_loss in the outcomes log."""
+    """Update the most recent decision's stop_loss in both Postgres and JSONL."""
+    # Postgres (primary)
+    try:
+        from db.queries import load_recent_decisions, update_decision
+        recent = load_recent_decisions(symbol, days=7)
+        if recent:
+            did = recent[-1].get("decision_id")
+            if did:
+                update_decision(did, {"stop_loss": new_stop})
+    except Exception:
+        pass
+
+    # JSONL (backup)
     if not OUTCOMES_LOG.exists():
         return
     lines = OUTCOMES_LOG.read_text().strip().split("\n")

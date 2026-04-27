@@ -78,7 +78,13 @@ def estimate_spread(symbol: str, broker_name: str = "alpaca") -> dict:
     """Get current bid-ask spread via broker adapter."""
     try:
         broker = get_broker(broker_name)
-        return broker.get_latest_quote(symbol)
+        quote = broker.get_latest_quote(symbol)
+        # Log for debugging wide spreads
+        if quote["spread_bps"] > 50:
+            print(f"  [SPREAD] {symbol}: bid=${quote['bid']:.2f} ask=${quote['ask']:.2f} "
+                  f"mid=${quote['mid']:.2f} spread={quote['spread_bps']:.1f}bps "
+                  f"(>50bps — likely pre/post market or stale quote)")
+        return quote
     except Exception as e:
         logging.warning(f"Spread estimation failed for {symbol}: {e}")
         return {"bid": 0, "ask": 0, "mid": 0, "spread_bps": 0}
@@ -106,7 +112,13 @@ def adjust_for_costs(base_position_pct: float, spread_bps: float) -> float:
 
     Round-trip estimate: 2x spread + 2x avg historical slippage.
     """
-    COST_CEILING_BPS = 50  # 0.5% round-trip ceiling
+    COST_CEILING_BPS = 50   # 0.5% round-trip ceiling
+    MAX_PLAUSIBLE_SPREAD = 30  # Cap stale/IEX quotes at 30 bps
+
+    # Clamp implausible spreads — IEX feed returns wide quotes for some ETFs
+    if spread_bps > MAX_PLAUSIBLE_SPREAD:
+        logging.info(f"Spread {spread_bps:.0f}bps clamped to {MAX_PLAUSIBLE_SPREAD}bps (likely stale IEX quote)")
+        spread_bps = MAX_PLAUSIBLE_SPREAD
     avg_slip = _avg_historical_slippage()
     estimated_round_trip_bps = 2 * spread_bps + 2 * avg_slip
 
@@ -244,6 +256,37 @@ class PaperTradingManager:
         return self._execute_trade(symbol, shares, OrderSide.SELL,
                                    decision_price, spread_bps)
 
+    def _cancel_existing_stops(self, symbol: str):
+        """Cancel any existing stop orders for this symbol before submitting new one."""
+        try:
+            # Get open orders from Alpaca and cancel stops for this symbol
+            from alpaca.trading.requests import GetOrdersRequest
+            from alpaca.trading.enums import QueryOrderStatus
+            open_orders = self.broker._trading.get_orders(
+                filter=GetOrdersRequest(status=QueryOrderStatus.OPEN, symbols=[symbol]))
+            for order in open_orders:
+                if "stop" in str(order.type).lower():
+                    self.broker.cancel_order(str(order.id))
+                    print(f"  Cancelled existing stop order {str(order.id)[:8]} for {symbol}")
+        except Exception as e:
+            logging.warning(f"Failed to cancel existing stops for {symbol}: {e}")
+
+    def flatten_position(self, symbol: str, reason: str = "direction reversal") -> bool:
+        """Close any existing position in a symbol before entering opposite direction."""
+        positions = self.get_current_positions()
+        if symbol not in positions or positions[symbol] == 0:
+            return True
+        qty = positions[symbol]
+        direction = "LONG" if qty > 0 else "SHORT"
+        print(f"  Closing existing {direction} {abs(qty):.0f} shares of {symbol} ({reason})")
+        try:
+            self._cancel_existing_stops(symbol)
+            self.broker.close_position(symbol)
+            return True
+        except Exception as e:
+            print(f"  Failed to flatten {symbol}: {e}")
+            return False
+
     def set_stop_loss(self, symbol: str, stop_price: float) -> Optional[str]:
         check_kill_switch()
         try:
@@ -251,6 +294,9 @@ class PaperTradingManager:
             if symbol not in positions or positions[symbol] == 0:
                 print(f"No position found for {symbol} to set stop loss")
                 return None
+
+            # Bug 5 fix: Cancel existing stop orders before submitting new one
+            self._cancel_existing_stops(symbol)
 
             qty = abs(positions[symbol])
             side = OrderSide.SELL if positions[symbol] > 0 else OrderSide.BUY
@@ -300,6 +346,16 @@ def execute_master_decision(decision: MasterTradingDecision) -> Dict:
 
     # Handle different decision types
     execution_result = {}
+
+    # Bug 4 fix: Flatten opposite position before entering new direction
+    if decision.final_decision.upper().startswith("LONG"):
+        positions = manager.get_current_positions()
+        if symbol in positions and positions[symbol] < 0:
+            manager.flatten_position(symbol, "reversing SHORT → LONG")
+    elif decision.final_decision.upper().startswith("SHORT"):
+        positions = manager.get_current_positions()
+        if symbol in positions and positions[symbol] > 0:
+            manager.flatten_position(symbol, "reversing LONG → SHORT")
 
     if decision.final_decision.upper().startswith("LONG") and position_pct > 0:
         shares = manager.calculate_share_quantity(symbol, position_pct, current_price)
