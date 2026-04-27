@@ -20,10 +20,12 @@ Or as context manager:
 
 import os
 from contextlib import contextmanager
+from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
+_ENV = Path(__file__).resolve().parent.parent / '.env'
+load_dotenv(_ENV if _ENV.exists() else None)
 
 _pool = None
 

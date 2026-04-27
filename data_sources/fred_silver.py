@@ -6,12 +6,14 @@ DXY, inflation) plus silver-specific industrial production indicators.
 """
 
 import os
+from pathlib import Path
 from datetime import datetime
 
 import requests
 from dotenv import load_dotenv
 
-load_dotenv()
+_ENV = Path(__file__).resolve().parent.parent / '.env'
+load_dotenv(_ENV if _ENV.exists() else None)
 
 from data_sources.base_source import BaseFundamentalsSource, FundamentalsSnapshot
 from data_sources.fred_gold import FREDGoldSource

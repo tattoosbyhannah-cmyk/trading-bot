@@ -20,11 +20,13 @@ import os
 import smtplib
 import logging
 from datetime import datetime
+from pathlib import Path
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from dotenv import load_dotenv
 
-load_dotenv()
+_ENV = Path(__file__).resolve().parent / '.env'
+load_dotenv(_ENV if _ENV.exists() else None)
 
 ALERT_EMAIL = os.getenv("ALERT_EMAIL")
 ALERT_PASSWORD = os.getenv("ALERT_EMAIL_APP_PASSWORD")

@@ -6,11 +6,13 @@ All Alpaca-specific imports and API calls live here.
 
 import os
 import time
+from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
 
-load_dotenv()
+_ENV = Path(__file__).resolve().parent.parent / '.env'
+load_dotenv(_ENV if _ENV.exists() else None)
 
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import (
