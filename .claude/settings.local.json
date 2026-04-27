@@ -76,7 +76,14 @@
       "Bash(rm -f dual_analyst.py.working fundamentals_analyst.py.working start_optimized_models.sh.bak)",
       "Bash(rm -rf chromadb-data.backup-*)",
       "Bash(rm -f ingest_pdfs.py ingest_rag_wave_1.py ingest_rag_wave_2.py ingest_rag_wave_3.py)",
-      "Bash(rm -f start_optimized_models.sh start_optimized_models.md START_SERVERS.md)"
+      "Bash(rm -f start_optimized_models.sh start_optimized_models.md START_SERVERS.md)",
+      "Bash(ls -la 10 \"15%\" 2x 70)",
+      "Bash(find . -maxdepth 1 -name \"10\" -o -name \"15%\" -o -name \"2x\" -o -name \"70\")",
+      "Bash(ls -la ions \"ions by direction:\")",
+      "Bash(ls *.db)",
+      "Bash(rm -f ions \"ions by direction:\")",
+      "Bash(mkdir -p deprecated)",
+      "Bash(mv fast_options_scanner.py fast_options_scanner_v2.py optimized_scanner.py multi_asset_scanner.py deprecated/)"
     ]
   }
 }
