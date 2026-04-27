@@ -27,6 +27,31 @@ from dotenv import load_dotenv
 _ENV = Path(__file__).resolve().parent.parent / '.env'
 load_dotenv(_ENV if _ENV.exists() else None)
 
+# Map of DB column names → canonical dict keys used by the rest of the bot.
+_DB_TO_CANONICAL = {
+    "created_at": "timestamp",
+    # add future renames here, one place
+}
+
+
+def _normalize_row(row: dict) -> dict:
+    """Translate DB column names to the canonical keys the orchestrator expects."""
+    if row is None:
+        return None
+    out = {}
+    for k, v in row.items():
+        canon = _DB_TO_CANONICAL.get(k, k)
+        # Convert datetime objects to ISO strings
+        if hasattr(v, "isoformat") and canon == "timestamp":
+            v = v.isoformat()
+        out[canon] = v
+    return out
+
+
+def _normalize_rows(rows: list) -> list:
+    return [_normalize_row(r) for r in rows]
+
+
 _pool = None
 
 
