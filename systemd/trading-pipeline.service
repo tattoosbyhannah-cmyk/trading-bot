@@ -1,0 +1,16 @@
+[Unit]
+Description=Trading Bot Daily Pipeline (majority vote USO/UNG/GLD + score outcomes)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/hannah/trading-bot
+EnvironmentFile=/home/hannah/trading-bot/.env
+ExecStart=/home/hannah/trading-bot/daily_pipeline.sh
+TimeoutStartSec=30min
+StandardOutput=append:/home/hannah/trading-bot/logs/daily_pipeline.log
+StandardError=append:/home/hannah/trading-bot/logs/daily_pipeline.log
+
+[Install]
+WantedBy=default.target

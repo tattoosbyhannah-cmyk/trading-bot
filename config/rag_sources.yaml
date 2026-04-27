@@ -1,0 +1,490 @@
+authority_tiers:
+  1: Issuer docs, SEC filings, official government data (EIA, FRED, CME)
+  2: Peer-reviewed academic papers
+  3: Books and practitioner literature
+  4: News, commentary, and surveys
+sources:
+  clenow_following_trend:
+    title: 'Following the Trend: Diversified Managed Futures Trading'
+    authors:
+    - Andreas Clenow
+    authority_tier: 3
+    source_class: practitioner_book
+    asset_classes:
+    - oil
+    - natgas
+    - gold
+    - general
+    collection: methodology
+    ingested: true
+    chunk_count: 688
+    published_date: '2013-01-01'
+  wolf_deep_research:
+    title: Deep Research Report on PDF-to-RAG Mapping
+    authors:
+    - Hannah Wolf
+    authority_tier: 4
+    source_class: internal_research
+    asset_classes:
+    - general
+    collection: methodology
+    ingested: true
+    chunk_count: 33
+    published_date: '2026-04-14'
+  ldp_causal_factor_meth:
+    title: Case for Causal Factor Investing
+    authors:
+    - "L\xF3pez de Prado"
+    authority_tier: 2
+    source_class: academic_paper
+    asset_classes:
+    - general
+    collection: methodology
+    ingested: true
+    chunk_count: 15
+    published_date: '2023-01-01'
+  liu_quant_trading:
+    title: Quantitative Trading Strategies Using Python
+    authors:
+    - Peng Liu
+    authority_tier: 3
+    source_class: practitioner_book
+    asset_classes:
+    - general
+    collection: methodology
+    ingested: true
+    chunk_count: 49
+    published_date: '2020-01-01'
+  kaufman_systems_methods:
+    title: Trading Systems and Methods
+    authors:
+    - Perry Kaufman
+    authority_tier: 3
+    source_class: practitioner_book
+    asset_classes:
+    - general
+    collection: methodology
+    ingested: true
+    chunk_count: 45
+    published_date: '2019-01-01'
+  narang_black_box:
+    title: Inside The Black Box
+    authors:
+    - Rishi Narang
+    authority_tier: 3
+    source_class: practitioner_book
+    asset_classes:
+    - general
+    collection: methodology
+    ingested: true
+    chunk_count: 44
+    published_date: '2013-01-01'
+  finrl_contests:
+    title: 'FinRL Contests: Reinforcement Learning for Financial Trading'
+    authors:
+    - Various
+    authority_tier: 2
+    source_class: academic_paper
+    asset_classes:
+    - general
+    collection: methodology
+    ingested: true
+    chunk_count: 23
+    published_date: '2025-04-01'
+  orchestration_framework:
+    title: LLM Agent Orchestration Framework for Trading
+    authors:
+    - Various
+    authority_tier: 2
+    source_class: academic_paper
+    asset_classes:
+    - general
+    collection: methodology
+    ingested: true
+    chunk_count: 17
+    published_date: '2025-12-01'
+  quantagent:
+    title: 'QuantAgent: Autonomous Quantitative Trading Agent'
+    authors:
+    - Various
+    authority_tier: 2
+    source_class: academic_paper
+    asset_classes:
+    - general
+    collection: methodology
+    ingested: true
+    chunk_count: 30
+    published_date: '2025-09-01'
+  llm_agent_survey:
+    title: 'Survey: LLM-Based Agents for Financial Trading'
+    authors:
+    - Various
+    authority_tier: 4
+    source_class: survey
+    asset_classes:
+    - general
+    collection: methodology
+    ingested: true
+    chunk_count: 8
+    published_date: '2024-08-01'
+  tradinggroup_qwen3:
+    title: 'TradingGroup: Multi-Agent Trading with Qwen3-8B Fine-Tune'
+    authors:
+    - Various
+    authority_tier: 2
+    source_class: academic_paper
+    asset_classes:
+    - general
+    collection: methodology
+    ingested: true
+    chunk_count: 9
+    published_date: '2025-08-01'
+  tradingagents_xiao:
+    title: 'TradingAgents: Multi-Agent LLM Financial Trading Framework (2025)'
+    authors:
+    - Xiao et al.
+    authority_tier: 2
+    source_class: academic_paper
+    asset_classes:
+    - general
+    collection: methodology
+    ingested: true
+    chunk_count: 38
+    published_date: '2025-04-01'
+  ldp_causal_factor_risk:
+    title: Causal Factor Investing
+    authors:
+    - "L\xF3pez de Prado"
+    authority_tier: 2
+    source_class: academic_paper
+    asset_classes:
+    - general
+    collection: risk_mgmt
+    ingested: true
+    chunk_count: 50
+    published_date: '2023-01-01'
+  ldp_ai_challenges:
+    title: AI Challenges in Mathematical Investing (Shanghai 2025)
+    authors:
+    - "Marcos L\xF3pez de Prado"
+    authority_tier: 2
+    source_class: academic_lecture
+    asset_classes:
+    - general
+    collection: risk_mgmt
+    ingested: true
+    chunk_count: 16
+    published_date: '2025-07-01'
+  ldp_causal_ai:
+    title: Causal AI & Sustainability
+    authors:
+    - "Marcos L\xF3pez de Prado"
+    authority_tier: 2
+    source_class: academic_lecture
+    asset_classes:
+    - general
+    collection: risk_mgmt
+    ingested: true
+    chunk_count: 53
+    published_date: '2025-01-01'
+  ldp_causal_analysis:
+    title: Causal Factor Analysis is a Necessary Condition for Investment Efficiency
+    authors:
+    - "Marcos L\xF3pez de Prado"
+    authority_tier: 2
+    source_class: academic_paper
+    asset_classes:
+    - general
+    collection: risk_mgmt
+    ingested: true
+    chunk_count: 25
+    published_date: '2024-01-01'
+  ldp_financial_ml:
+    title: 'Financial Machine Learning: An Engineering Problem'
+    authors:
+    - "Marcos L\xF3pez de Prado"
+    authority_tier: 2
+    source_class: academic_lecture
+    asset_classes:
+    - general
+    collection: risk_mgmt
+    ingested: true
+    chunk_count: 36
+    published_date: '2024-01-01'
+  ldp_cosmology:
+    title: 'Investment Lessons from Cosmology: Draw Assumptions Before Conclusions'
+    authors:
+    - "Marcos L\xF3pez de Prado"
+    authority_tier: 2
+    source_class: academic_lecture
+    asset_classes:
+    - general
+    collection: risk_mgmt
+    ingested: true
+    chunk_count: 24
+    published_date: '2024-01-01'
+  ldp_sharpe:
+    title: 'Sharpe Ratio Inference: A New Standard for Decision-Making & Reporting'
+    authors:
+    - "Marcos L\xF3pez de Prado"
+    authority_tier: 2
+    source_class: academic_paper
+    asset_classes:
+    - general
+    collection: risk_mgmt
+    ingested: true
+    chunk_count: 36
+    published_date: '2024-01-01'
+  ldp_causal_inference:
+    title: The Role of Causal Inference in the Scientific Method
+    authors:
+    - "Marcos L\xF3pez de Prado"
+    authority_tier: 2
+    source_class: academic_lecture
+    asset_classes:
+    - general
+    collection: risk_mgmt
+    ingested: true
+    chunk_count: 31
+    published_date: '2024-01-01'
+  ldp_fdr:
+    title: What is the False Discovery Rate in Finance?
+    authors:
+    - "Marcos L\xF3pez de Prado"
+    authority_tier: 2
+    source_class: academic_paper
+    asset_classes:
+    - general
+    collection: risk_mgmt
+    ingested: true
+    chunk_count: 21
+    published_date: '2024-01-01'
+  poudel_backtesting:
+    title: Quantitative Trading Strategy Backtesting and Performance Analysis Using Python
+    authors:
+    - Poudel et al.
+    authority_tier: 2
+    source_class: academic_paper
+    asset_classes:
+    - general
+    collection: risk_mgmt
+    ingested: true
+    chunk_count: 20
+    published_date: '2025-01-01'
+  edwards_energy_trading:
+    title: Energy Trading and Investing (2nd Edition)
+    authors:
+    - Davis Edwards
+    authority_tier: 3
+    source_class: practitioner_book
+    asset_classes:
+    - oil
+    - natgas
+    collection: commodities
+    ingested: true
+    chunk_count: 1134
+    published_date: '2014-01-01'
+  taylor_mastering_commodities:
+    title: Mastering the Commodities Markets
+    authors:
+    - Francesca Taylor
+    authority_tier: 3
+    source_class: practitioner_book
+    asset_classes:
+    - oil
+    - natgas
+    - gold
+    - general
+    collection: commodities
+    ingested: true
+    chunk_count: 334
+    published_date: '2013-01-01'
+  newman_oil_derivatives:
+    title: World of Oil Derivatives
+    authors:
+    - Greg Newman
+    authority_tier: 3
+    source_class: practitioner_book
+    asset_classes:
+    - oil
+    collection: commodities
+    ingested: true
+    chunk_count: 300
+    published_date: '2021-01-01'
+  mack_energy_risk:
+    title: Energy Trading and Risk Management
+    authors:
+    - Iris Mack
+    authority_tier: 3
+    source_class: practitioner_book
+    asset_classes:
+    - oil
+    - natgas
+    collection: commodities
+    ingested: true
+    chunk_count: 596
+    published_date: '2014-01-01'
+  johnson_40_trades:
+    title: 40 Classic Crude Oil Trades
+    authors:
+    - Owain Johnson
+    authority_tier: 3
+    source_class: practitioner_book
+    asset_classes:
+    - oil
+    collection: commodities
+    ingested: true
+    chunk_count: 251
+    published_date: '2022-01-01'
+  uko_oil_101:
+    title: Oil Trading 101
+    authors:
+    - Usiere Uko
+    authority_tier: 3
+    source_class: practitioner_book
+    asset_classes:
+    - oil
+    collection: commodities
+    ingested: true
+    chunk_count: 233
+    published_date: '2020-01-01'
+  etrm_handbook:
+    title: The Handbook for Energy Trading and Risk Management (ETRM)
+    authors:
+    - Various
+    authority_tier: 3
+    source_class: practitioner_book
+    asset_classes:
+    - oil
+    - natgas
+    collection: commodities
+    ingested: true
+    chunk_count: 118
+    published_date: '2023-01-01'
+  baur_lucey_gold:
+    title: Is Gold a Hedge or a Safe Haven?
+    authors:
+    - Baur
+    - Lucey
+    authority_tier: 2
+    source_class: academic_paper
+    asset_classes:
+    - gold
+    collection: papers
+    ingested: true
+    chunk_count: 13
+    published_date: '2010-01-01'
+  chincarini_moneta:
+    title: 'The Challenges of Oil Investing: Contango and the Financialization of Commodities (2021)'
+    authors:
+    - Chincarini
+    - Moneta
+    authority_tier: 2
+    source_class: academic_paper
+    asset_classes:
+    - oil
+    collection: papers
+    ingested: true
+    chunk_count: 56
+    published_date: '2021-01-01'
+  erb_harvey_golden_dilemma:
+    title: The Golden Dilemma (NBER Working Paper 18706)
+    authors:
+    - Erb
+    - Harvey
+    authority_tier: 2
+    source_class: academic_paper
+    asset_classes:
+    - gold
+    collection: papers
+    ingested: true
+    chunk_count: 49
+    published_date: '2012-12-01'
+  till_2010:
+    title: Intelligent Commodity Investing and Risk Management (2010)
+    authors:
+    - Hilary Till
+    authority_tier: 2
+    source_class: academic_paper
+    asset_classes:
+    - oil
+    - natgas
+    - general
+    collection: papers
+    ingested: true
+    chunk_count: 34
+    published_date: '2010-01-01'
+  till_2008:
+    title: 'Intelligent Commodity Investing: Opportunities and Challenges (2008)'
+    authors:
+    - Hilary Till
+    authority_tier: 2
+    source_class: academic_paper
+    asset_classes:
+    - oil
+    - natgas
+    - general
+    collection: papers
+    ingested: true
+    chunk_count: 6
+    published_date: '2008-01-01'
+  rickards_gold:
+    title: The New Case for Gold
+    authors:
+    - James Rickards
+    authority_tier: 3
+    source_class: practitioner_book
+    asset_classes:
+    - gold
+    collection: papers
+    ingested: true
+    chunk_count: 140
+    published_date: '2016-01-01'
+  jastram_golden_constant:
+    title: 'The Golden Constant: The English and American Experience 1560-2007'
+    authors:
+    - Jastram
+    authority_tier: 2
+    source_class: academic_paper
+    asset_classes:
+    - gold
+    collection: papers
+    ingested: true
+    chunk_count: 2
+    published_date: '2009-01-01'
+  deep_learning_quant:
+    title: Deep Learning in Quantitative Trading
+    authors:
+    - Various
+    authority_tier: 2
+    source_class: academic_paper
+    asset_classes:
+    - general
+    collection: papers
+    ingested: true
+    chunk_count: 50
+    published_date: '2023-01-01'
+  llms_equity:
+    title: LLMs in Equity Markets
+    authors:
+    - Various
+    authority_tier: 2
+    source_class: academic_paper
+    asset_classes:
+    - general
+    collection: papers
+    ingested: true
+    chunk_count: 21
+    published_date: '2024-01-01'
+  middelkoop_big_reset:
+    title: 'The Big Reset: War on Gold and the Financial Endgame'
+    authors:
+    - Willem Middelkoop
+    authority_tier: 3
+    source_class: practitioner_book
+    asset_classes:
+    - gold
+    collection: papers
+    ingested: true
+    chunk_count: 325
+    published_date: '2014-01-01'

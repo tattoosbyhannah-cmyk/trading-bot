@@ -1,0 +1,66 @@
+instruments:
+  USO:
+    active: true
+    asset_class: oil
+    display_name: "United States Oil Fund"
+    type: etf
+    underlying: WTI crude futures
+    data_sources:
+      fundamentals: eia_crude
+      macro: [dxy, vix]
+    roll_mechanics: true
+    roll_window_days: 5
+    sentiment_group: oil
+    sentiment_symbols: [USO, XLE, OIH, BNO, UCO, SCO, XOP, GUSH, DRIP, CL, WTI, OIL]
+    intraday_eligible: true
+    min_daily_atr_pct: 1.5
+    broker: alpaca
+
+  UNG:
+    active: true
+    asset_class: natgas
+    display_name: "United States Natural Gas Fund"
+    type: etf
+    underlying: Henry Hub natural gas futures
+    data_sources:
+      fundamentals: eia_natgas
+      macro: [weather]
+    roll_mechanics: true
+    roll_window_days: 5
+    sentiment_group: natgas
+    sentiment_symbols: [UNG, BOIL, KOLD, UNL, FCG, UGAZ, DGAZ, NG]
+    intraday_eligible: true
+    min_daily_atr_pct: 2.0
+    broker: alpaca
+
+  GLD:
+    active: true
+    asset_class: gold
+    display_name: "SPDR Gold Shares"
+    type: etf
+    underlying: physical gold bullion
+    data_sources:
+      fundamentals: fred_gold
+      macro: [real_yields, dxy, breakeven_inflation, vix, fed_funds]
+    roll_mechanics: false
+    sentiment_group: gold
+    sentiment_symbols: [GLD, IAU, SGOL, GDX, GDXJ, NUGT, DUST, SLV, GOLD, NEM, AEM]
+    intraday_eligible: false
+    min_daily_atr_pct: 2.0
+    broker: alpaca
+
+  SLV:
+    active: false  # Enable after 30+ scored outcomes on USO/UNG/GLD
+    asset_class: silver
+    display_name: "iShares Silver Trust"
+    type: etf
+    underlying: physical silver bullion
+    data_sources:
+      fundamentals: fred_silver
+      macro: [real_yields, dxy, breakeven_inflation, industrial_production]
+    roll_mechanics: false
+    sentiment_group: silver
+    sentiment_symbols: [SLV, SIVR, AGQ, ZSL, PAAS, WPM, AG, SIL, SILJ, PSLV]
+    intraday_eligible: true
+    min_daily_atr_pct: 1.5
+    broker: alpaca

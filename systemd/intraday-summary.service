@@ -1,0 +1,16 @@
+[Unit]
+Description=Intraday Swing Daily Summary (email + log after market close)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/hannah/trading-bot
+EnvironmentFile=/home/hannah/trading-bot/.env
+ExecStart=/home/hannah/trading-bot/venv/bin/python /home/hannah/trading-bot/intraday/intraday_summary.py
+TimeoutStartSec=5min
+StandardOutput=append:/home/hannah/trading-bot/logs/intraday_swing.log
+StandardError=append:/home/hannah/trading-bot/logs/intraday_swing.log
+
+[Install]
+WantedBy=default.target

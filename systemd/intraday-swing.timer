@@ -1,0 +1,10 @@
+[Unit]
+Description=Start intraday swing executor at 9:35 AM ET weekdays (after daily pipeline)
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 09:35:00 America/New_York
+Persistent=false
+Unit=intraday-swing.service
+
+[Install]
+WantedBy=timers.target

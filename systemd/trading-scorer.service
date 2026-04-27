@@ -1,0 +1,16 @@
+[Unit]
+Description=Trading Bot Outcome Scorer (evening run to catch matured horizons)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/hannah/trading-bot
+EnvironmentFile=/home/hannah/trading-bot/.env
+ExecStart=/home/hannah/trading-bot/venv/bin/python /home/hannah/trading-bot/score_outcomes.py
+TimeoutStartSec=10min
+StandardOutput=append:/home/hannah/trading-bot/logs/daily_pipeline.log
+StandardError=append:/home/hannah/trading-bot/logs/daily_pipeline.log
+
+[Install]
+WantedBy=default.target

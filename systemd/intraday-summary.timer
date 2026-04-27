@@ -1,0 +1,10 @@
+[Unit]
+Description=Run intraday summary at 4:10 PM ET weekdays (after market close)
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 16:10:00 America/New_York
+Persistent=false
+Unit=intraday-summary.service
+
+[Install]
+WantedBy=timers.target

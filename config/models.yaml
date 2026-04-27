@@ -1,0 +1,32 @@
+models:
+  default:
+    name: "Qwen3-30B-A3B-Thinking"
+    type: moe
+    active_params: "3B"
+    total_params: "30B"
+    endpoint: "http://127.0.0.1:8081/v1"
+    model_name: "qwen3-thinking"
+    max_tokens: 4096
+    temperature: 0.0
+    seed: 42
+
+  # Future fine-tuned model example:
+  # fast_classifier:
+  #   name: "qwen3-4b-trading-finetuned"
+  #   type: dense
+  #   active_params: "4B"
+  #   endpoint: "http://127.0.0.1:8082/v1"
+  #   model_name: "qwen3-4b-finetuned"
+  #   max_tokens: 1024
+  #   temperature: 0.1
+
+agent_routing:
+  technical_analyst: default
+  fundamentals_analyst: default
+  sentiment_analyst: default
+  risk_gatekeeper: default
+  rag_bull_researcher: default
+  rag_bear_researcher: default
+  rag_debate_synthesis: default
+  master_orchestrator: default
+  intraday_profiler: default

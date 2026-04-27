@@ -1,0 +1,10 @@
+[Unit]
+Description=Run trading-scorer daily at 5:15 PM America/New_York (after US market close)
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 17:15:00 America/New_York
+Persistent=true
+Unit=trading-scorer.service
+
+[Install]
+WantedBy=timers.target

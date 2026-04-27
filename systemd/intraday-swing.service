@@ -1,0 +1,24 @@
+[Unit]
+Description=Intraday Swing Executor (stream bars + signals + paper trades)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/hannah/trading-bot
+EnvironmentFile=/home/hannah/trading-bot/.env
+ExecStartPre=/bin/sleep 1500
+ExecStart=/home/hannah/trading-bot/venv/bin/python /home/hannah/trading-bot/intraday/swing_executor.py
+TimeoutStartSec=30min
+TimeoutStopSec=30
+# Restart during market hours only — systemd will retry on failure
+Restart=on-failure
+RestartSec=30
+# Stop cleanly: SIGTERM first, then SIGKILL after 30s
+KillSignal=SIGTERM
+StandardOutput=append:/home/hannah/trading-bot/logs/intraday_swing.log
+StandardError=append:/home/hannah/trading-bot/logs/intraday_swing.log
+
+[Install]
+# Manual enable only — do NOT auto-start until confident
+WantedBy=default.target
