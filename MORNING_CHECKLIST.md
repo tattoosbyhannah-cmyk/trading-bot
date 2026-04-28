@@ -32,8 +32,9 @@ systemctl --user list-timers | grep -E "trading|intraday|swing"
 
 For each timer, the `LAST` column should show a time from this morning, not yesterday:
 
-- [ ] `trading-pipeline.timer` — LAST should show today ~06:35 PT
+- [ ] `trading-pipeline.timer` — LAST should show today ~06:45 PT
 - [ ] `intraday-swing.timer` — LAST should show today ~06:35 PT
+  <!-- intraday-swing.timer fires at 06:35 PT but ExecStartPre sleeps 25 min, so the executor actually starts ~07:00 PT (10:00 ET) — after the 9:45 ET pipeline run completes. -->
 - [ ] `intraday-summary.timer` — will show today ~13:10 once it fires
 - [ ] `trading-scorer.timer` — will show today ~14:15 once it fires
 

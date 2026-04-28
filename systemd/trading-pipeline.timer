@@ -1,9 +1,9 @@
 [Unit]
-Description=Run trading-pipeline: 9:35 AM ET Mon/Tue/Fri, 10:45 AM ET Wed/Thu (post-EIA)
+Description=Run trading-pipeline: 9:45 AM ET Mon/Tue/Fri, 10:45 AM ET Wed/Thu (post-EIA)
 
 [Timer]
-# Non-EIA weekdays — fire 5 min after the open
-OnCalendar=Mon,Tue,Fri *-*-* 09:35:00 America/New_York
+# Non-EIA weekdays — fire 15 min after the open (lets IEX quotes settle)
+OnCalendar=Mon,Tue,Fri *-*-* 09:45:00 America/New_York
 # Wed (EIA crude 10:30) + Thu (EIA natgas 10:30) — wait for data
 OnCalendar=Wed,Thu *-*-* 10:45:00 America/New_York
 Persistent=true
