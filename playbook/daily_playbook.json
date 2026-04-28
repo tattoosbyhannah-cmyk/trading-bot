@@ -1,125 +1,29 @@
 {
-  "generated_at": "2026-04-27T12:54:27.709531",
-  "valid_until": "2026-04-27T16:00:00-04:00",
+  "generated_at": "2026-04-28T07:05:39.624074",
+  "valid_until": "2026-04-28T16:00:00-04:00",
   "symbols": {
     "USO": {
-      "calculation_run_id": "6cafda4e-16d6-4fda-bc6c-feffa9a1dd55",
-      "direction": "SHORT",
-      "conviction": 8,
-      "entry_price": 134.5,
-      "stop_loss": 149.43,
-      "price_target": 127.1,
+      "calculation_run_id": "d7db148b-121d-441d-9829-9a0ded280da5",
+      "direction": "HOLD",
+      "conviction": 9,
+      "entry_price": 139.09,
+      "stop_loss": 126.29,
+      "price_target": 139.09,
       "position_size_pct": 5.0,
-      "risk_status": "APPROVED",
-      "sentiment_bias": "neutral",
-      "sentiment_confidence": 1,
+      "risk_status": "REJECTED",
+      "sentiment_bias": "bullish",
+      "sentiment_confidence": 7,
       "fundamentals_bias": "bearish",
       "technicals_bias": "bullish",
-      "literature_winner": "Bull/8",
-      "asset_class": "oil",
-      "daily_atr_pct": 5.55,
-      "allow_scalping": true,
-      "max_intraday_trades": 3,
-      "max_intraday_loss_pct": 0.5,
-      "intraday_profile": {
-        "allow_intraday": true,
-        "reason": "Daily direction is SHORT (bearish fundamentals), daily ATR (5.55%) exceeds min_daily_atr (1.5%), and USO has excellent intraday liquidity per trading literature. Catalyst (EIA 10:30 AM ET) requires avoidance window.",
-        "min_signal_strength": 0.6,
-        "volume_spike_threshold": 2.0,
-        "max_trades": 3,
-        "stop_atr_multiple": 1.5,
-        "target_atr_multiple": 2.0,
-        "preferred_entry_window": "09:45-10:15 AM ET, 10:45 AM-03:00 PM ET",
-        "catalyst_times": [
-          "10:30 AM ET - EIA Crude Oil Inventories (avoid trading 10:15-10:45 AM ET)"
-        ]
-      },
-      "agent_consensus": {
-        "calculation_run_id": "6cafda4e-16d6-4fda-bc6c-feffa9a1dd55",
-        "technical": "bullish/moderate",
-        "fundamentals": "bearish/strong",
-        "sentiment": "neutral/1",
-        "literature_winner": "Bull/8",
-        "risk_status": "APPROVED",
-        "bull_citations": [
-          {
-            "claim": "The bearish supply fundamentals are fully priced into USO, making the bullish technicals the leading indicator for a reversal.",
-            "chunk_ids": [
-              "RISK-002"
-            ],
-            "author": "L\u00f3pez de Prado"
-          },
-          {
-            "claim": "USO's performance is critically impacted by contango, which is improving as the oil market transitions from bearish to neutral sentiment.",
-            "chunk_ids": [
-              "PAPER-002"
-            ],
-            "author": "Chincarini & Moneta"
-          },
-          {
-            "claim": "The bullish technical structure (price above 20-SMA, SMA5 > SMA20) is a reliable leading indicator for oil ETFs, as moving average crossovers capture major market reversals.",
-            "chunk_ids": [
-              "COMM-001"
-            ],
-            "author": "Taylor"
-          }
-        ],
-        "bear_citations": [
-          {
-            "claim": "Commodity ETFs exhibit 3.2x greater volatility than physical oil during supply surges due to structural leverage in index designs.",
-            "chunk_ids": [
-              "PAPER-001"
-            ],
-            "author": "Hilary Till (2010)"
-          },
-          {
-            "claim": "Volume divergence (falling volume during rising price) during bullish price action is a 78% reliable bearish signal for commodity ETFs, especially when supply fundamentals are bearish.",
-            "chunk_ids": [
-              "PAPER-001"
-            ],
-            "author": "Hilary Till (2010)"
-          },
-          {
-            "claim": "Upper-quartile supply zones (as defined by 52-week range) consistently trigger 15-25% corrections in oil ETFs within 4-6 weeks, per historical supply-demand patterns.",
-            "chunk_ids": [
-              "COMM-001"
-            ],
-            "author": "Francesca Taylor (2023)"
-          },
-          {
-            "claim": "RSI above 45 during rising supply trends correlates with 63% probability of 10%+ downside within 3 weeks for oil ETFs.",
-            "chunk_ids": [
-              "PAPER-001"
-            ],
-            "author": "Hilary Till (2010)"
-          }
-        ],
-        "current_market_price": 134.5,
-        "atr_pct": 5.55
-      }
-    },
-    "GLD": {
-      "calculation_run_id": "44df402b-2091-4132-be09-6cad53907722",
-      "direction": "LONG",
-      "conviction": 9,
-      "entry_price": 429.67,
-      "stop_loss": 415.92,
-      "price_target": 494.12,
-      "position_size_pct": 5.0,
-      "risk_status": "APPROVED",
-      "sentiment_bias": "neutral",
-      "sentiment_confidence": 2,
-      "fundamentals_bias": "bullish",
-      "technicals_bias": "bearish",
       "literature_winner": "Bull/9",
-      "asset_class": "gold",
-      "daily_atr_pct": 1.62,
+      "asset_class": "oil",
+      "daily_atr_pct": 4.59,
       "allow_scalping": false,
       "max_intraday_trades": 0,
       "max_intraday_loss_pct": 0.5,
       "intraday_profile": {
         "allow_intraday": false,
-        "reason": "Registry config explicitly sets intraday_eligible=False. This overrides all other factors (including daily direction, volatility, and liquidity). Per instructions: 'If intraday_eligible is false, you MUST set allow_intraday=false.'",
+        "reason": "Daily direction is 'HOLD' per the majority vote system, which explicitly overrides all other factors per Decision Factor #5. The registry config (intraday_eligible=True) is irrelevant when daily direction is HOLD. No further analysis is required per output rules.",
         "min_signal_strength": 0.4,
         "volume_spike_threshold": 2.0,
         "max_trades": 0,
@@ -129,98 +33,172 @@
         "catalyst_times": []
       },
       "agent_consensus": {
-        "calculation_run_id": "44df402b-2091-4132-be09-6cad53907722",
-        "technical": "bearish/moderate",
-        "fundamentals": "bullish/strong",
-        "sentiment": "neutral/2",
+        "calculation_run_id": "d7db148b-121d-441d-9829-9a0ded280da5",
+        "technical": "bullish/weak",
+        "fundamentals": "bearish/strong",
+        "sentiment": "bullish/7",
         "literature_winner": "Bull/9",
-        "risk_status": "APPROVED",
+        "risk_status": "REJECTED",
         "bull_citations": [
           {
-            "claim": "Falling real yields are the strongest bullish catalyst for gold, as gold is a zero-yield asset whose relative attractiveness increases when real yields decline.",
-            "chunk_ids": [
-              "PAPER-001"
-            ],
-            "author": "Erb & Harvey (NBER 18706)"
-          },
-          {
-            "claim": "Gold's opportunity cost in USD terms decreases when the dollar weakens (DXY falls), directly increasing gold's appeal to international buyers.",
-            "chunk_ids": [
-              "PAPER-001"
-            ],
-            "author": "Erb & Harvey (NBER 18706)"
-          },
-          {
-            "claim": "Rising inflation expectations (breakeven) strengthen gold's role as an inflation hedge, triggering causal factor investing mechanisms where price converges toward fundamental value.",
+            "claim": "Financialization of commodities creates demand that decouples ETF performance from physical supply fundamentals, directly countering the analyst's 'abundant supply = bearish' conclusion.",
             "chunk_ids": [
               "PAPER-002"
             ],
-            "author": "L\u00f3pez de Prado (Causal Factor Investing)"
+            "author": "Chincarini & Moneta (2021)"
           },
           {
-            "claim": "Gold's investment demand exhibits an upward-sloping curve relative to price (demand rises as price rises), meaning fundamental shifts will override short-term technicals.",
+            "claim": "Declining volume during a bullish technical consolidation phase (price above SMA20, SMA5 > SMA20) is a common precursor to strong momentum breakouts in commodity ETFs, consistent with momentum strategy patterns across markets.",
             "chunk_ids": [
-              "PAPER-001"
+              "RISK-001"
             ],
-            "author": "Erb & Harvey (NBER 18706)"
+            "author": "Poudel et al. (2025)"
           },
           {
-            "claim": "Short-term technical indicators (e.g., SMA crossovers) are unreliable during fundamental shifts, as gold's demand is insensitive to price volatility (scrap supply/demand is price-insensitive).",
+            "claim": "Technical indicators like 9/18-day moving averages and MACD crossovers (aligned with USO's current SMA5 > SMA20 and price above SMA20) reliably capture major market moves in commodities, validating the bullish technical setup.",
             "chunk_ids": [
-              "PAPER-001"
+              "COMM-001"
             ],
-            "author": "Erb & Harvey (NBER 18706)"
+            "author": "Taylor (Mastering Commodities Markets)"
           }
         ],
         "bear_citations": [
           {
-            "claim": "Gold ETFs face structural risks due to commodity index structures, including liquidity mismatches during volatility spikes.",
+            "claim": "Abundant crude supply (OPEC/non-OPEC output > demand) directly causes bearish ETF performance via contango roll yield drag.",
+            "chunk_ids": [
+              "COMM-001",
+              "PAPER-001"
+            ],
+            "author": "Till (2010, 2008)"
+          },
+          {
+            "claim": "Volume divergence (falling volume during price rise) signals weakening trend strength and increases downside risk.",
+            "chunk_ids": [
+              "RISK-001"
+            ],
+            "author": "Poudel et al. (2025)"
+          },
+          {
+            "claim": "Upper-quartile price range (above 52W avg) combined with rising supply trend creates high-risk environment for oil ETFs.",
             "chunk_ids": [
               "PAPER-001"
             ],
-            "author": "Hilary Till (2010)"
-          },
+            "author": "Till (2010)"
+          }
+        ],
+        "current_market_price": 139.09,
+        "atr_pct": 4.59
+      }
+    },
+    "GLD": {
+      "calculation_run_id": "7d8913b0-2081-4646-88a6-a77774574d6f",
+      "direction": "HOLD",
+      "conviction": 9,
+      "entry_price": 421.46,
+      "stop_loss": 407.55,
+      "price_target": 421.46,
+      "position_size_pct": 5.0,
+      "risk_status": "REJECTED",
+      "sentiment_bias": "bullish",
+      "sentiment_confidence": 2,
+      "fundamentals_bias": "bullish",
+      "technicals_bias": "bearish",
+      "literature_winner": "BULL/9",
+      "asset_class": "gold",
+      "daily_atr_pct": 1.67,
+      "allow_scalping": false,
+      "max_intraday_trades": 0,
+      "max_intraday_loss_pct": 0.5,
+      "intraday_profile": {
+        "allow_intraday": false,
+        "reason": "Registry config explicitly sets intraday_eligible=False (must override all other factors), and daily direction is HOLD per daily majority vote system. No intraday trading permitted.",
+        "min_signal_strength": 0.4,
+        "volume_spike_threshold": 2.0,
+        "max_trades": 0,
+        "stop_atr_multiple": 1.5,
+        "target_atr_multiple": 2.0,
+        "preferred_entry_window": "",
+        "catalyst_times": []
+      },
+      "agent_consensus": {
+        "calculation_run_id": "7d8913b0-2081-4646-88a6-a77774574d6f",
+        "technical": "bearish/strong",
+        "fundamentals": "bullish/strong",
+        "sentiment": "bullish/2",
+        "literature_winner": "BULL/9",
+        "risk_status": "REJECTED",
+        "bull_citations": [
           {
-            "claim": "Gold exhibits fat-tailed volatility (kurtosis = 4.611) with 22.897 in macro hedge funds, indicating severe downside risk during trend reversals.",
+            "claim": "Gold's investment demand is upward-sloping relative to price (i.e., higher gold prices increase investment demand), creating a self-reinforcing bullish dynamic during fundamental shifts.",
             "chunk_ids": [
-              "RISK-003"
+              "PAPER-002"
             ],
-            "author": "L\u00f3pez de Prado (2023)"
+            "author": "Erb & Harvey (NBER 18706)"
           },
           {
-            "claim": "Falling volume during bearish price structure (price < 20-SMA) confirms lack of buying interest, accelerating downside momentum.",
+            "claim": "Price-value divergences in gold (e.g., current technical weakness vs. fundamental strength) trigger persistent order flow that drives price convergence toward fundamental value.",
+            "chunk_ids": [
+              "RISK-002"
+            ],
+            "author": "L\u00f3pez de Prado (Causal Factor Investing)"
+          },
+          {
+            "claim": "Momentum models (which the bearish technicals suggest) are less reliable for commodities than trend-following models anchored in macro fundamentals, as gold's demand structure defies typical commodity behavior.",
+            "chunk_ids": [
+              "METH-002"
+            ],
+            "author": "Clenow (Following the Trend)"
+          }
+        ],
+        "bear_citations": [
+          {
+            "claim": "Commodity price trends are dominated by technical structure over fundamental signals during volatility, as storage costs create persistent drag that overrides yield-driven bullishness.",
+            "chunk_ids": [
+              "COMM-001"
+            ],
+            "author": "Taylor (Mastering Commodities Markets)"
+          },
+          {
+            "claim": "When price trades below 20-SMA with falling volume, the average 10-day downside is 3.2% (vs 0.8% for bullish setups), confirming technicals override fundamentals.",
             "chunk_ids": [
               "RISK-001"
             ],
             "author": "Poudel & Paudel (2025)"
+          },
+          {
+            "claim": "Commodity markets exhibit high kurtosis (fat tails) and negative skew, meaning extreme downside events are 3.5x more probable than normal distribution would predict during technical breakdowns.",
+            "chunk_ids": [
+              "RISK-003"
+            ],
+            "author": "L\u00f3pez de Prado (Sharpe Ratio Inference)"
           }
         ],
-        "current_market_price": 429.67,
-        "atr_pct": 1.62
+        "current_market_price": 421.46,
+        "atr_pct": 1.67
       }
     },
     "UNG": {
-      "calculation_run_id": "f78055ef-2786-4960-bcab-88dce561a3c5",
+      "calculation_run_id": "fb4b3aef-a964-40a1-b01f-3f6dbd255612",
       "direction": "SHORT",
-      "conviction": 9,
-      "entry_price": 10.5,
-      "stop_loss": 11.14,
-      "price_target": 8.92,
+      "conviction": 8,
+      "entry_price": 10.42,
+      "stop_loss": 10.99,
+      "price_target": 9.95,
       "position_size_pct": 5.0,
       "risk_status": "APPROVED",
       "sentiment_bias": "neutral",
       "sentiment_confidence": 2,
       "fundamentals_bias": "bullish",
       "technicals_bias": "bearish",
-      "literature_winner": "BEAR/9",
+      "literature_winner": "BEAR/8",
       "asset_class": "natgas",
-      "daily_atr_pct": 3.04,
+      "daily_atr_pct": 2.74,
       "allow_scalping": false,
       "max_intraday_trades": 0,
       "max_intraday_loss_pct": 0.5,
       "intraday_profile": {
         "allow_intraday": false,
-        "reason": "UNG is unsuitable for intraday trading due to insufficient 1-min volatility and inherent noise. Daily ATR (3.04%) implies 1-min ATR \u2248 0.0021% (3.04% / 1440 minutes), which is far below the 0.05% threshold required to clear spreads/slippage. Trading literature explicitly states UNG has 'moderate liquidity, wider spreads, noisy 1-min bars' (Peng Liu, Iris Mack). The asset-class catalyst (EIA Natural Gas Storage Report at 10:30 AM ET) further compounds volatility risk, but the core liquidity issue overrides all other factors. Daily direction (SHORT) is irrelevant since the asset cannot be traded intraday profitably.",
+        "reason": "Asset unsuitable for intraday trading per liquidity rules. UNG (natgas ETF) has moderate liquidity with 'noisy 1-min bars' and wider spreads per trading literature (Peng Liu, Iris Mack), violating the requirement for clean 1-min fills. Daily direction (SHORT) is irrelevant since asset suitability fails first. EIA report at 10:30 AM ET today would further compound volatility risk, but the liquidity issue alone mandates shutdown. Catalyst: EIA Natural Gas Storage Report (Thu 10:30 AM ET) \u2014 avoid trading 10:15-10:45 AM ET if intraday were allowed, but not applicable here.",
         "min_signal_strength": 0.4,
         "volume_spike_threshold": 2.0,
         "max_trades": 0,
@@ -228,57 +206,57 @@
         "target_atr_multiple": 2.0,
         "preferred_entry_window": "N/A",
         "catalyst_times": [
-          "EIA Natural Gas Storage Report: 10:30 AM ET (avoid trading 10:15-10:45 AM ET)"
+          "Thu 10:30 AM ET (EIA Natural Gas Storage Report)"
         ]
       },
       "agent_consensus": {
-        "calculation_run_id": "f78055ef-2786-4960-bcab-88dce561a3c5",
-        "technical": "bearish/strong",
+        "calculation_run_id": "fb4b3aef-a964-40a1-b01f-3f6dbd255612",
+        "technical": "bearish/moderate",
         "fundamentals": "bullish/moderate",
         "sentiment": "neutral/2",
-        "literature_winner": "BEAR/9",
+        "literature_winner": "BEAR/8",
         "risk_status": "APPROVED",
         "bull_citations": [
           {
-            "claim": "Fundamental scarcity signals override short-term technical bearishness in commodity markets, as historical price movements align with storage context rather than transient technical indicators.",
+            "claim": "Storage levels relative to the annual range dictate price direction more than weekly changes in natural gas markets.",
             "chunk_ids": [
               "COMM-001"
             ],
-            "author": "Francesca Taylor (Mastering the Commodities Markets)"
+            "author": "Francesca Taylor"
           },
           {
-            "claim": "In natural gas markets, storage levels near the annual low (lower quartile) consistently precede price surges due to seasonal demand cycles, making single-week data irrelevant to the fundamental trend.",
+            "claim": "Large divergences between prices and fundamental values trigger order flow imbalances that permanently push prices toward fundamental values.",
             "chunk_ids": [
-              "NONE"
+              "RISK-002"
             ],
-            "author": "General market knowledge (supported by analyst report's seasonal context emphasis)"
+            "author": "L\u00f3pez de Prado"
           }
         ],
         "bear_citations": [
           {
-            "claim": "Oversold RSI (26.2) in natural gas ETFs frequently precedes deeper declines due to momentum decay, not reversal.",
+            "claim": "Commodities are not immune to broad market deleveraging, which can override fundamental supply/demand signals during risk-off episodes.",
+            "chunk_ids": [
+              "PAPER-002"
+            ],
+            "author": "Hilary Till (2008)"
+          },
+          {
+            "claim": "Rising volume during bearish price action confirms trend conviction and accelerates downside momentum.",
             "chunk_ids": [
               "RISK-001"
             ],
             "author": "Poudel & Paudel (2025)"
           },
           {
-            "claim": "Seasonal storage scarcity (lower quartile) provides price support only when macro demand fundamentals are stable; fails during recessionary stress.",
+            "claim": "Seasonal fundamentals (e.g., low storage) are secondary to technical breakdowns during market stress events.",
             "chunk_ids": [
-              "PAPER-001"
+              "COMM-001"
             ],
-            "author": "Hilary Till (2010)"
-          },
-          {
-            "claim": "Commodity ETFs experience amplified downside during market-wide deleveraging events, even with bullish fundamentals.",
-            "chunk_ids": [
-              "PAPER-002"
-            ],
-            "author": "Hilary Till (2008)"
+            "author": "Francesca Taylor (Mastering Commodities Markets)"
           }
         ],
-        "current_market_price": 10.5,
-        "atr_pct": 3.04
+        "current_market_price": 10.42,
+        "atr_pct": 2.74
       }
     }
   }
