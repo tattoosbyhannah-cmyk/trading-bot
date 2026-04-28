@@ -36,7 +36,7 @@ sys.path.insert(0, str(_BOTDIR))
 from brokers.broker_factory import get_broker
 from brokers.base_broker import OrderRequest, OrderSide, OrderType, OrderStatus
 from paper_trading_executor import (
-    check_kill_switch, estimate_spread, adjust_for_costs, KILL_SWITCH_FILE
+    check_kill_switch, estimate_spread, KILL_SWITCH_FILE, SPREAD_REJECT_BPS
 )
 from intraday.signal_engine import SignalEngine, Signal
 from intraday import stream_bars
@@ -332,10 +332,13 @@ class SwingExecutor:
 
         # Position sizing
         spread = estimate_spread(symbol)
+        if spread["spread_bps"] > SPREAD_REJECT_BPS:
+            print(f"  [EXEC] {symbol} REJECTED: spread {spread['spread_bps']:.0f}bps > "
+                  f"{SPREAD_REJECT_BPS}bps circuit-breaker")
+            return
         base_pct = pb.get("position_size_pct", 0.2)
-        adjusted_pct = adjust_for_costs(base_pct, spread["spread_bps"])
         # Scale by signal strength (capped at base)
-        sized_pct = min(base_pct, adjusted_pct * (sig.strength / 0.7))
+        sized_pct = min(base_pct, base_pct * (sig.strength / 0.7))
 
         try:
             portfolio_val = self.broker.get_account()["portfolio_value"]

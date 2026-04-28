@@ -5,8 +5,7 @@ Executes trading decisions with position management and performance tracking.
 Includes:
 - Kill switch enforcement (file-based halt)
 - Fill record logging with slippage measurement
-- Bid-ask spread estimation
-- Cost-adjusted position sizing
+- Bid-ask spread estimation (informational + 200 bps reject circuit-breaker)
 - Broker-agnostic via brokers/ adapter layer
 """
 
@@ -74,63 +73,25 @@ def _log_fill(record: FillRecord):
 
 # ── Spread Estimation ────────────────────────────────────────────────────────
 
+SPREAD_WARN_BPS = 50    # Informational only — logged for post-hoc analysis
+SPREAD_REJECT_BPS = 200 # Circuit-breaker — reject trade entirely (flash-crash / halt)
+
+
 def estimate_spread(symbol: str, broker_name: str = "alpaca") -> dict:
     """Get current bid-ask spread via broker adapter."""
     try:
         broker = get_broker(broker_name)
         quote = broker.get_latest_quote(symbol)
-        # Log for debugging wide spreads
-        if quote["spread_bps"] > 50:
-            print(f"  [SPREAD] {symbol}: bid=${quote['bid']:.2f} ask=${quote['ask']:.2f} "
-                  f"mid=${quote['mid']:.2f} spread={quote['spread_bps']:.1f}bps "
-                  f"(>50bps — likely pre/post market or stale quote)")
+        if quote["spread_bps"] > SPREAD_WARN_BPS:
+            logging.warning(
+                f"[SPREAD] {symbol}: bid=${quote['bid']:.2f} ask=${quote['ask']:.2f} "
+                f"mid=${quote['mid']:.2f} spread={quote['spread_bps']:.1f}bps "
+                f"(>{SPREAD_WARN_BPS}bps — likely pre/post market or stale quote)"
+            )
         return quote
     except Exception as e:
         logging.warning(f"Spread estimation failed for {symbol}: {e}")
         return {"bid": 0, "ask": 0, "mid": 0, "spread_bps": 0}
-
-
-# ── Cost-Adjusted Position Sizing ────────────────────────────────────────────
-
-def _avg_historical_slippage() -> float:
-    """Average slippage in bps from fill_records.jsonl, or 0 if no data."""
-    if not FILL_LOG.exists():
-        return 0.0
-    slippages = []
-    try:
-        with open(FILL_LOG) as f:
-            for line in f:
-                r = json.loads(line)
-                slippages.append(abs(r.get("slippage_bps", 0)))
-    except Exception:
-        return 0.0
-    return sum(slippages) / len(slippages) if slippages else 0.0
-
-
-def adjust_for_costs(base_position_pct: float, spread_bps: float) -> float:
-    """Reduce position size if round-trip cost drag exceeds ceiling.
-
-    Round-trip estimate: 2x spread + 2x avg historical slippage.
-    """
-    COST_CEILING_BPS = 50   # 0.5% round-trip ceiling
-    MAX_PLAUSIBLE_SPREAD = 30  # Cap stale/IEX quotes at 30 bps
-
-    # Clamp implausible spreads — IEX feed returns wide quotes for some ETFs
-    if spread_bps > MAX_PLAUSIBLE_SPREAD:
-        logging.info(f"Spread {spread_bps:.0f}bps clamped to {MAX_PLAUSIBLE_SPREAD}bps (likely stale IEX quote)")
-        spread_bps = MAX_PLAUSIBLE_SPREAD
-    avg_slip = _avg_historical_slippage()
-    estimated_round_trip_bps = 2 * spread_bps + 2 * avg_slip
-
-    if estimated_round_trip_bps > COST_CEILING_BPS:
-        reduction_factor = COST_CEILING_BPS / estimated_round_trip_bps
-        adjusted = base_position_pct * reduction_factor
-        logging.info(
-            f"Cost adjustment: {base_position_pct:.2f}% -> {adjusted:.2f}% "
-            f"(round-trip {estimated_round_trip_bps:.1f} bps > {COST_CEILING_BPS} ceiling)"
-        )
-        return adjusted
-    return base_position_pct
 
 
 @dataclass
@@ -334,15 +295,28 @@ def execute_master_decision(decision: MasterTradingDecision) -> Dict:
 
     print(f"Current Price: ${current_price:.2f}")
 
-    # Estimate spread and adjust position for costs
+    # Estimate spread (informational + circuit-breaker only — no sizing adjustment)
     spread = estimate_spread(symbol)
     spread_bps = spread["spread_bps"]
     if spread_bps > 0:
         print(f"Spread: {spread_bps:.1f} bps (bid ${spread['bid']:.2f} / ask ${spread['ask']:.2f})")
 
-    position_pct = adjust_for_costs(decision.position_size, spread_bps)
-    if position_pct != decision.position_size:
-        print(f"Cost-adjusted position: {decision.position_size}% -> {position_pct:.2f}%")
+    if spread_bps > SPREAD_REJECT_BPS:
+        logging.critical(
+            f"[SPREAD REJECT] {symbol} spread {spread_bps:.0f}bps > {SPREAD_REJECT_BPS}bps "
+            f"circuit-breaker — trade rejected (flash-crash / halt protection)"
+        )
+        return {
+            "success": False,
+            "error": f"Spread {spread_bps:.0f}bps exceeds {SPREAD_REJECT_BPS}bps circuit-breaker",
+            "symbol": symbol,
+            "spread_bps": spread_bps,
+            "current_price": current_price,
+            "portfolio_value": manager.get_portfolio_value(),
+            "timestamp": datetime.now().isoformat(),
+        }
+
+    position_pct = decision.position_size
 
     # Handle different decision types
     execution_result = {}
