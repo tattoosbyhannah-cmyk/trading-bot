@@ -41,6 +41,7 @@ class OrderRequest:
     stop_price: Optional[float] = None
     time_in_force: str = "day"
     idempotency_key: Optional[str] = None
+    extended_hours: bool = False
 
 
 @dataclass
@@ -90,6 +91,16 @@ class BaseBroker(ABC):
     @abstractmethod
     def cancel_order(self, order_id: str) -> bool:
         """Cancel an order by ID. Returns True if successfully cancelled."""
+        ...
+
+    @abstractmethod
+    def get_open_orders(self, symbol: Optional[str] = None) -> list:
+        """Return open orders, optionally filtered by symbol."""
+        ...
+
+    @abstractmethod
+    def get_asset(self, symbol: str):
+        """Return the broker's asset record for a symbol (must expose `.shortable`, `.tradable`)."""
         ...
 
     @abstractmethod

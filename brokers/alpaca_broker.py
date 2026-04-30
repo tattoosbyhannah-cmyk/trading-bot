@@ -129,6 +129,7 @@ class AlpacaBroker(BaseBroker):
                 symbol=order.symbol, qty=order.qty,
                 side=side, time_in_force=tif,
                 limit_price=order.limit_price,
+                extended_hours=order.extended_hours,
             )
         elif order.order_type == OrderType.STOP:
             req = AlpacaStopOrder(
@@ -148,6 +149,19 @@ class AlpacaBroker(BaseBroker):
             return True
         except APIError:
             return False
+
+    def get_open_orders(self, symbol: Optional[str] = None) -> list:
+        from alpaca.trading.requests import GetOrdersRequest
+        from alpaca.trading.enums import QueryOrderStatus
+        req = GetOrdersRequest(
+            status=QueryOrderStatus.OPEN,
+            symbols=[symbol] if symbol else None,
+            limit=100,
+        )
+        return self._trading.get_orders(filter=req)
+
+    def get_asset(self, symbol: str):
+        return self._trading.get_asset(symbol)
 
     def replace_order(self, order_id: str, qty: float = None,
                       limit_price: float = None,

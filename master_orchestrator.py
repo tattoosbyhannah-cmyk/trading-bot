@@ -210,8 +210,11 @@ def _compute_price_levels(llm_out: _LLMDecision, entry_price: float,
     """Convert LLM percentage outputs to actual price levels using Python math."""
     direction = llm_out.final_decision.strip().split()[0].upper()
 
-    sl_pct = llm_out.stop_loss_pct
-    tp_pct = llm_out.price_target_pct
+    # abs() belt-and-suspenders: schema already enforces ge=0, but if a negative
+    # ever slips through (LLM bypass, future schema drift), treat as magnitude so
+    # the SHORT/LONG branch below still produces the geometrically correct level.
+    sl_pct = abs(llm_out.stop_loss_pct)
+    tp_pct = abs(llm_out.price_target_pct)
 
     if entry_price and entry_price > 0:
         if direction == "SHORT":
@@ -411,7 +414,12 @@ Do NOT compute dollar prices — code will handle that.
 Use the ATR volatility data above: Clenow recommends 2x ATR for trend-following stops.
 Tighter stops get clipped by normal volatility; wider stops risk excessive loss per trade.
 Your stop_loss_pct should reflect THIS asset's actual price behavior.
-Similarly, output price_target_pct as a percentage distance from entry.
+
+PRICE TARGET GUIDANCE:
+Output price_target_pct as a positive PERCENTAGE distance from entry (e.g. 8.0 means
+the target is 8% away from entry). ALWAYS POSITIVE — do NOT use negative values for SHORT
+trades. The code derives direction from your LONG/SHORT decision: for LONG the target is
+8% above entry, for SHORT the target is 8% below. You provide magnitude only.
 
 POSITION CONTINUITY:
 Consider yesterday's decision if provided above. If yesterday's thesis is still valid and

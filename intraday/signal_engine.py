@@ -27,6 +27,7 @@ from dataclasses import dataclass, asdict
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
@@ -37,6 +38,17 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 TRADING_BOT_DIR = Path(__file__).resolve().parent.parent
 PLAYBOOK_FILE = TRADING_BOT_DIR / "playbook" / "daily_playbook.json"
 SIGNAL_LOG = TRADING_BOT_DIR / "logs" / "intraday_signals.jsonl"
+ET = ZoneInfo("America/New_York")
+
+
+def _log(*args, **kwargs):
+    """Wraps print() with an ISO-timestamp prefix in America/New_York for service log correlation.
+    A leading '\\n' in the first arg becomes a real blank line so the timestamp lands on the content."""
+    if args and isinstance(args[0], str) and args[0].startswith("\n"):
+        print()  # noqa: T201 — separator blank line; timestamp lands on the next call
+        args = (args[0].lstrip("\n"),) + args[1:]
+    ts = datetime.now(ET).strftime("%Y-%m-%dT%H:%M:%S%z")
+    print(ts, *args, **kwargs)  # noqa: T201 — intentional print inside log helper
 
 
 @dataclass
@@ -259,7 +271,7 @@ class SignalEngine:
         vwap = get_vwap(symbol)
         sig = self.on_bar(symbol, bars_df, vwap)
         if sig:
-            print(f"  🔔 SIGNAL: {sig.direction} {sig.symbol} "
+            _log(f"  🔔 SIGNAL: {sig.direction} {sig.symbol} "
                   f"str={sig.strength:.2f} @ ${sig.entry_price:.2f} "
                   f"| {sig.reason}")
 
@@ -304,15 +316,15 @@ def _fetch_historical_bars(symbol: str, days: int = 5) -> pd.DataFrame:
 
 def _run_backtest(symbol: str, days: int = 5):
     """Simulate the signal engine over historical 1-min bars."""
-    print(f"=== BACKTEST: {symbol} ({days} days of 1-min bars) ===\n")
-    print("Fetching historical bars...")
+    _log(f"=== BACKTEST: {symbol} ({days} days of 1-min bars) ===\n")
+    _log("Fetching historical bars...")
 
     all_bars = _fetch_historical_bars(symbol, days)
     if all_bars.empty:
-        print("No bars fetched.")
+        _log("No bars fetched.")
         return
 
-    print(f"Fetched {len(all_bars)} bars "
+    _log(f"Fetched {len(all_bars)} bars "
           f"({all_bars['timestamp'].iloc[0][:10]} to {all_bars['timestamp'].iloc[-1][:10]})\n")
 
     # Simulate playbook: use LONG for backtest (signals in both directions tested)
@@ -373,27 +385,27 @@ def _run_backtest(symbol: str, days: int = 5):
                 })
 
         # Report
-        print(f"── Playbook direction: {test_dir} ──")
-        print(f"  Signals generated: {len(signals)}")
+        _log(f"── Playbook direction: {test_dir} ──")
+        _log(f"  Signals generated: {len(signals)}")
         if signals:
             wins = sum(1 for s in signals if s["win"])
             win_rate = wins / len(signals) * 100
             avg_strength = np.mean([s["signal"].strength for s in signals])
             avg_return = np.mean([s["return_pct"] for s in signals])
-            print(f"  Win rate (15-bar): {wins}/{len(signals)} = {win_rate:.1f}%")
-            print(f"  Avg signal strength: {avg_strength:.3f}")
-            print(f"  Avg directional return: {avg_return:+.3f}%")
+            _log(f"  Win rate (15-bar): {wins}/{len(signals)} = {win_rate:.1f}%")
+            _log(f"  Avg signal strength: {avg_strength:.3f}")
+            _log(f"  Avg directional return: {avg_return:+.3f}%")
 
             # Show first 5 signals
-            print(f"\n  Sample signals:")
+            _log(f"\n  Sample signals:")
             for s in signals[:5]:
                 sig = s["signal"]
                 outcome = "WIN" if s["win"] else "LOSS"
-                print(f"    {sig.timestamp[:16]} {sig.direction} "
+                _log(f"    {sig.timestamp[:16]} {sig.direction} "
                       f"str={sig.strength:.2f} @ ${sig.entry_price:.2f} "
                       f"→ ${s['future_close']:.2f} ({s['return_pct']:+.2f}%) "
                       f"[{outcome}] | {sig.reason}")
-        print()
+        _log()
 
 
 if __name__ == "__main__":
@@ -407,10 +419,10 @@ if __name__ == "__main__":
                 days = int(sys.argv[didx + 1])
         _run_backtest(symbol, days)
     else:
-        print("Usage:")
-        print("  python intraday/signal_engine.py --backtest USO")
-        print("  python intraday/signal_engine.py --backtest USO --days 10")
-        print("\nFor live mode, import and register with stream_bars:")
-        print("  from intraday.signal_engine import SignalEngine")
-        print("  engine = SignalEngine(playbook)")
-        print("  register_callback(engine.on_bar_callback)")
+        _log("Usage:")
+        _log("  python intraday/signal_engine.py --backtest USO")
+        _log("  python intraday/signal_engine.py --backtest USO --days 10")
+        _log("\nFor live mode, import and register with stream_bars:")
+        _log("  from intraday.signal_engine import SignalEngine")
+        _log("  engine = SignalEngine(playbook)")
+        _log("  register_callback(engine.on_bar_callback)")

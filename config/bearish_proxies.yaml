@@ -1,0 +1,28 @@
+# Bearish-proxy routing — when a SHORT signal hits a non-shortable symbol,
+# route to an inverse-ETF LONG (or invert-direction LONG on a Bear-N×) instead
+# of [SKIP]ing the trade. See logs/validation_status.md "W4" for full spec.
+#
+# Format:
+#   <original_symbol>: { proxy: <ticker>, leverage: <int>, asset_class: <name>, note?: <str> }
+#
+# Sizing rule:
+#   leverage == -2  (inverse ETF):       LONG order on proxy, sized as original_pct / 2
+#   leverage == 1, note "invert direction" (bear-N× ETF): LONG order on parent index, sized at original_pct
+#   missing entry: [SKIP] (current behavior, unchanged)
+#
+# Pre-flight verifications (2026-04-29): all 6 proxy tickers tradable on Alpaca
+# paper account; only SCO and NUGT are themselves shortable, but routing always
+# goes LONG on the proxy so this isn't load-bearing.
+#
+# UPDATE 2026-04-30: shortability is dynamic (UNG flipped False→True overnight).
+# Routing is the durable fallback regardless of any single day's shortability state.
+
+USO:  { proxy: SCO,  leverage: -2, asset_class: oil }
+BNO:  { proxy: SCO,  leverage: -2, asset_class: oil }
+DBO:  { proxy: SCO,  leverage: -2, asset_class: oil }
+UCO:  { proxy: SCO,  leverage: -2, asset_class: oil }   # UCO is +2x oil; SCO is its inverse
+UNG:  { proxy: KOLD, leverage: -2, asset_class: natgas }
+BOIL: { proxy: KOLD, leverage: -2, asset_class: natgas } # BOIL is +2x natgas; KOLD is its inverse
+DUST: { proxy: GDX,  leverage: 1,  asset_class: gold_miners, note: "invert direction" }
+JNUG: { proxy: GDXJ, leverage: 1,  asset_class: gold_miners, note: "invert direction" }
+JDST: { proxy: GDXJ, leverage: 1,  asset_class: gold_miners, note: "invert direction" }

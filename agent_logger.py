@@ -98,6 +98,16 @@ def _extract_decision_fields(result):
             for c in lit_cites
         ]
 
+    # Capture sentiment-fetch diagnostics dict (per-query counts, top_headlines, etc.)
+    # without stringifying — preserves structure for post-hoc analysis.
+    diag = None
+    if hasattr(candidate, "diagnostics"):
+        diag = getattr(candidate, "diagnostics")
+    elif isinstance(candidate, dict) and "diagnostics" in candidate:
+        diag = candidate["diagnostics"]
+    if diag:
+        fields["diagnostics"] = diag if isinstance(diag, dict) else str(diag)
+
     return fields
 
 

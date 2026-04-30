@@ -31,6 +31,14 @@ OUTCOMES_LOG = Path(__file__).parent / "logs" / "decision_outcomes.jsonl"
 PLAYBOOK_DIR = Path(__file__).parent / "playbook"
 PLAYBOOK_FILE = PLAYBOOK_DIR / "daily_playbook.json"
 
+# Intraday position sizing — smaller than daily because intraday churns more.
+# Adjust after 30+ scored intraday outcomes.
+INTRADAY_SIZE_BY_SYMBOL = {
+    "USO": 2.0,   # best intraday performer (48% backtest win rate)
+    "UNG": 1.5,
+    "GLD": 1.5,
+}
+
 
 def check_kill_switch():
     """Raise if kill switch is engaged. Fail fast before spending inference time."""
@@ -148,6 +156,7 @@ def _write_playbook_entry(symbol: str, majority_direction: str, best_run: dict):
             "stop_loss": best_run.get("stop_loss"),
             "price_target": best_run.get("price_target"),
             "position_size_pct": 5.0,  # Base size — risk gatekeeper Python scaling adjusts this
+            "intraday_position_size_pct": INTRADAY_SIZE_BY_SYMBOL.get(symbol, 1.5),
             "risk_status": consensus.get("risk_status", "UNKNOWN"),
             "sentiment_bias": _parse_bias(consensus.get("sentiment")),
             "sentiment_confidence": _parse_sentiment_conf(consensus.get("sentiment")),

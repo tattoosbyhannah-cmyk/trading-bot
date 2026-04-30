@@ -51,6 +51,14 @@ def _write_records(records: list):
     # Postgres per-record update
     try:
         from db.queries import update_decision
+        # W4: ensure proxy_outcomes JSONB column exists; idempotent
+        try:
+            from db.connection import db_cursor
+            with db_cursor() as cur:
+                cur.execute("ALTER TABLE decisions ADD COLUMN IF NOT EXISTS proxy_outcomes JSONB")
+        except Exception as e:
+            print(f"  [WARN] ALTER decisions ADD proxy_outcomes failed: {e}")
+
         for r in records:
             did = r.get("decision_id")
             if not did:
@@ -59,7 +67,8 @@ def _write_records(records: list):
             for field in ("price_1d", "price_5d", "price_30d",
                           "return_1d_pct", "return_5d_pct", "return_30d_pct",
                           "hit_stop", "hit_target", "stop_hit_day", "target_hit_day",
-                          "opportunity_cost_pct", "scored_at", "stop_loss"):
+                          "opportunity_cost_pct", "scored_at", "stop_loss",
+                          "proxy_outcomes"):
                 if field in r and r[field] is not None:
                     updates[field] = r[field]
             if updates:
@@ -227,6 +236,33 @@ def _score_record(record: dict) -> bool:
                                loss_pct, record["timestamp"][:10])
             except Exception:
                 pass
+
+    # Bearish-proxy routing dual P&L (W4) — for trades whose actual position is in a proxy.
+    # The existing return_{h}d_pct above is the INFERRED direct-thesis P&L (what UNG SHORT
+    # would have netted if direct). The block below adds ACTUAL proxy P&L (what the LONG KOLD
+    # position actually netted) and the divergence between the two.
+    route = record.get("route_taken")
+    if isinstance(route, dict) and route.get("executed_symbol") and horizons_to_score:
+        proxy_symbol = route["executed_symbol"]
+        try:
+            proxy_bars = _fetch_bars(proxy_symbol, start, end)
+        except Exception as e:
+            print(f"  [WARN] proxy bars fetch failed for {proxy_symbol}: {e}")
+            proxy_bars = []
+        if proxy_bars:
+            proxy_entry = proxy_bars[0]["close"]
+            proxy_outcomes = {"proxy_entry_price": round(proxy_entry, 2)}
+            for h in horizons_to_score:
+                if len(proxy_bars) >= h:
+                    proxy_exit = proxy_bars[h - 1]["close"]
+                    # Routed trades are always executed_direction = LONG by config
+                    proxy_ret = _directional_return("LONG", proxy_entry, proxy_exit)
+                    proxy_outcomes[f"proxy_return_{h}d_pct"] = round(proxy_ret, 2)
+                    inferred = record.get(f"return_{h}d_pct")
+                    if inferred is not None:
+                        proxy_outcomes[f"route_divergence_{h}d_pct"] = round(proxy_ret - inferred, 2)
+            record["proxy_outcomes"] = proxy_outcomes
+            updated = True
 
     if updated:
         record["scored_at"] = datetime.now(timezone.utc).isoformat()

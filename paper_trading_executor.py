@@ -33,6 +33,8 @@ load_dotenv(Path(__file__).resolve().parent / '.env' if (Path(__file__).resolve(
 
 KILL_SWITCH_FILE = Path(__file__).parent / "KILL_SWITCH"
 FILL_LOG = Path(__file__).parent / "logs" / "fill_records.jsonl"
+BEARISH_PROXIES_FILE = Path(__file__).parent / "config" / "bearish_proxies.yaml"
+ROUTE_EVENTS_LOG = Path(__file__).parent / "logs" / "route_events.jsonl"
 
 
 def check_kill_switch():
@@ -43,6 +45,110 @@ def check_kill_switch():
             f"KILL SWITCH ENGAGED: {reason}. "
             f"Remove {KILL_SWITCH_FILE} to re-enable trading."
         )
+
+
+# ── Bearish-proxy routing (W4) ───────────────────────────────────────────────
+
+_bearish_proxies_cache: Optional[Dict[str, dict]] = None
+_route_column_ready: bool = False
+
+
+def _load_bearish_proxies() -> Dict[str, dict]:
+    """Lazy-load + cache config/bearish_proxies.yaml. Empty dict on failure."""
+    global _bearish_proxies_cache
+    if _bearish_proxies_cache is None:
+        try:
+            import yaml
+            _bearish_proxies_cache = yaml.safe_load(BEARISH_PROXIES_FILE.read_text()) or {}
+        except FileNotFoundError:
+            _bearish_proxies_cache = {}
+        except Exception as e:
+            logging.warning(f"bearish_proxies.yaml load failed: {e}")
+            _bearish_proxies_cache = {}
+    return _bearish_proxies_cache
+
+
+def _resolve_short_route(original_symbol: str, original_pct: float) -> Optional[dict]:
+    """Return a route_taken dict if a proxy is configured, else None.
+
+    Two routing modes:
+      leverage == -2 (inverse ETF): SHORT signal on USO → LONG on SCO at sized_pct=original/2
+      leverage == 1 with note 'invert direction' (bear-N× ETF): SHORT on DUST → LONG on GDX at original_pct
+    """
+    cfg = _load_bearish_proxies().get(original_symbol)
+    if not cfg:
+        return None
+    proxy = cfg.get("proxy")
+    leverage = int(cfg.get("leverage", 1))
+    asset_class = cfg.get("asset_class", "")
+    note = (cfg.get("note") or "").lower()
+
+    if leverage == -2:
+        sized_pct = round(original_pct / 2.0, 4)
+    elif leverage == 1 and "invert" in note:
+        sized_pct = round(original_pct, 4)
+    else:
+        logging.warning(
+            f"bearish_proxies entry for {original_symbol} has unsupported "
+            f"leverage={leverage} note={note!r} — skipping route"
+        )
+        return None
+
+    return {
+        "original_symbol": original_symbol,
+        "original_direction": "SHORT",
+        "executed_symbol": proxy,
+        "executed_direction": "LONG",
+        "leverage": leverage,
+        "sized_pct": sized_pct,
+        "original_pct": round(original_pct, 4),
+        "asset_class": asset_class,
+    }
+
+
+def _ensure_route_taken_column() -> bool:
+    """Idempotent: add decisions.route_taken JSONB if missing. Cached after first success."""
+    global _route_column_ready
+    if _route_column_ready:
+        return True
+    try:
+        from db.connection import db_cursor
+        with db_cursor() as cur:
+            cur.execute("ALTER TABLE decisions ADD COLUMN IF NOT EXISTS route_taken JSONB")
+        _route_column_ready = True
+    except Exception as e:
+        logging.warning(f"ALTER decisions ADD route_taken failed: {e}")
+    return _route_column_ready
+
+
+def _persist_route_event(route: dict, calculation_run_id: str = "", trade_result=None):
+    """Append to route_events.jsonl + UPDATE decisions.route_taken (best-effort)."""
+    record = {
+        "timestamp": datetime.now().isoformat(),
+        "calculation_run_id": calculation_run_id,
+        "route_taken": route,
+        "filled_price": getattr(trade_result, "filled_price", None) if trade_result else None,
+        "filled_qty": getattr(trade_result, "filled_qty", None) if trade_result else None,
+        "order_id": getattr(trade_result, "order_id", None) if trade_result else None,
+    }
+    try:
+        ROUTE_EVENTS_LOG.parent.mkdir(exist_ok=True)
+        with open(ROUTE_EVENTS_LOG, "a") as f:
+            f.write(json.dumps(record, default=str) + "\n")
+    except Exception as e:
+        logging.warning(f"route event JSONL write failed: {e}")
+
+    if calculation_run_id and _ensure_route_taken_column():
+        try:
+            from db.connection import db_cursor
+            with db_cursor() as cur:
+                cur.execute(
+                    "UPDATE decisions SET route_taken = %s "
+                    "WHERE calculation_run_id = %s AND symbol = %s",
+                    (json.dumps(route), calculation_run_id, route["original_symbol"]),
+                )
+        except Exception as e:
+            logging.warning(f"decisions.route_taken UPDATE failed: {e}")
 
 
 # ── Fill Record / Slippage Tracking ──────────────────────────────────────────
@@ -111,6 +217,25 @@ class PaperTradingManager:
     def __init__(self, broker_name: str = "alpaca"):
         self.broker = get_broker(broker_name)
         self.db = TradingPerformanceDB()
+        # Per-session cache for shortability lookups. Asset shortability rarely
+        # changes mid-day, so a single get_asset() call per symbol per process is
+        # sufficient. Cache key is the uppercased symbol; value is bool.
+        self._shortable_cache: Dict[str, bool] = {}
+
+    def is_shortable(self, symbol: str) -> bool:
+        """True if the broker reports the symbol as shortable. Fail-open on
+        lookup errors so the broker can do the final reject."""
+        sym = symbol.upper()
+        if sym in self._shortable_cache:
+            return self._shortable_cache[sym]
+        try:
+            asset = self.broker.get_asset(sym)
+            shortable = bool(getattr(asset, "shortable", False))
+        except Exception as e:
+            logging.warning(f"Shortability lookup failed for {sym}: {e}")
+            shortable = True  # fail open
+        self._shortable_cache[sym] = shortable
+        return shortable
 
     def get_portfolio_value(self) -> float:
         try:
@@ -356,28 +481,89 @@ def execute_master_decision(decision: MasterTradingDecision) -> Dict:
             print(f"❌ Trade failed: {trade_result.error_message}")
 
     elif decision.final_decision.upper().startswith("SHORT") and position_pct > 0:
-        shares = manager.calculate_share_quantity(symbol, position_pct, current_price)
-        print(f"Shorting {shares} shares...")
+        # Alpaca paper accounts cannot short every symbol. Pre-check shortability;
+        # if not shortable, attempt bearish-proxy routing (W4) before falling back to [SKIP].
+        if not manager.is_shortable(symbol):
+            calc_run_id = (decision.agent_consensus or {}).get("calculation_run_id", "")
+            route = _resolve_short_route(symbol, position_pct)
 
-        trade_result = manager.execute_short_trade(
-            symbol, shares, decision_price=current_price, spread_bps=spread_bps)
-        execution_result['trade'] = trade_result
+            if route is None:
+                print(f"[SKIP] {symbol} SHORT signal — not shortable on Alpaca paper account, no proxy configured")
+                return {
+                    "success": False,
+                    "skipped": True,
+                    "reason": "not_shortable",
+                    "symbol": symbol,
+                }
 
-        if trade_result.success:
-            print(f"✅ Short trade executed: {shares} shares of {symbol}")
-            if trade_result.filled_price:
-                print(f"   Fill: ${trade_result.filled_price:.2f}")
-            try:
-                from alert_manager import alert_trade_executed
-                alert_trade_executed(symbol, "SHORT", shares,
-                                     trade_result.filled_price or current_price, spread_bps)
-            except Exception:
-                pass
-            if decision.stop_loss:
-                stop_order_id = manager.set_stop_loss(symbol, decision.stop_loss)
-                execution_result['stop_loss_order_id'] = stop_order_id
+            # Route to LONG on the proxy
+            proxy_symbol = route["executed_symbol"]
+            sized_pct = route["sized_pct"]
+            print(f"[ROUTE] {symbol} SHORT → {proxy_symbol} LONG (leverage adjusted: {sized_pct}%)")
+
+            proxy_price = manager.get_current_price(proxy_symbol)
+            if not proxy_price:
+                logging.warning(f"could not fetch proxy price for {proxy_symbol}")
+                return {
+                    "success": False,
+                    "skipped": True,
+                    "reason": "proxy_price_lookup_failed",
+                    "symbol": symbol,
+                    "route_taken": route,
+                }
+
+            proxy_shares = manager.calculate_share_quantity(proxy_symbol, sized_pct, proxy_price)
+            print(f"Buying {proxy_shares} shares of {proxy_symbol} (routed from {symbol} SHORT)...")
+            trade_result = manager.execute_long_trade(
+                proxy_symbol, proxy_shares,
+                decision_price=proxy_price, spread_bps=spread_bps,
+            )
+            execution_result['trade'] = trade_result
+            execution_result['route_taken'] = route
+
+            _persist_route_event(route, calculation_run_id=calc_run_id, trade_result=trade_result)
+
+            if trade_result.success:
+                print(f"✅ Routed long trade executed: {proxy_shares} shares of {proxy_symbol}")
+                if trade_result.filled_price:
+                    print(f"   Fill: ${trade_result.filled_price:.2f}")
+                try:
+                    from alert_manager import alert_trade_executed
+                    alert_trade_executed(
+                        proxy_symbol, f"LONG (routed from {symbol} SHORT)",
+                        proxy_shares, trade_result.filled_price or proxy_price, spread_bps,
+                    )
+                except Exception:
+                    pass
+                # Note: stop_loss from the original decision is in the original symbol's
+                # price space and does NOT translate to the proxy. Skipping stop-loss on
+                # routed trades; daily-system stops apply via separate ratchet logic.
+            else:
+                print(f"❌ Routed trade failed: {trade_result.error_message}")
+            # Fall through to attach metadata at end of function
         else:
-            print(f"❌ Trade failed: {trade_result.error_message}")
+            shares = manager.calculate_share_quantity(symbol, position_pct, current_price)
+            print(f"Shorting {shares} shares...")
+
+            trade_result = manager.execute_short_trade(
+                symbol, shares, decision_price=current_price, spread_bps=spread_bps)
+            execution_result['trade'] = trade_result
+
+            if trade_result.success:
+                print(f"✅ Short trade executed: {shares} shares of {symbol}")
+                if trade_result.filled_price:
+                    print(f"   Fill: ${trade_result.filled_price:.2f}")
+                try:
+                    from alert_manager import alert_trade_executed
+                    alert_trade_executed(symbol, "SHORT", shares,
+                                         trade_result.filled_price or current_price, spread_bps)
+                except Exception:
+                    pass
+                if decision.stop_loss:
+                    stop_order_id = manager.set_stop_loss(symbol, decision.stop_loss)
+                    execution_result['stop_loss_order_id'] = stop_order_id
+            else:
+                print(f"❌ Trade failed: {trade_result.error_message}")
 
     elif decision.final_decision.upper() == "HOLD":
         print("📊 Decision: HOLD - No trade executed")

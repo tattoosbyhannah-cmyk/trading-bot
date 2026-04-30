@@ -55,6 +55,18 @@ _stream: Optional[StockDataStream] = None
 _shutdown = False
 
 
+# ── Log helper: ISO timestamp prefix on every line ──────────────────────────
+
+def _log(*args, **kwargs):
+    """Wraps print() with an ISO-timestamp prefix in America/New_York for service log correlation.
+    A leading '\\n' in the first arg becomes a real blank line so the timestamp lands on the content."""
+    if args and isinstance(args[0], str) and args[0].startswith("\n"):
+        print()  # noqa: T201 — separator blank line; timestamp lands on the next call
+        args = (args[0].lstrip("\n"),) + args[1:]
+    ts = datetime.now(ET).strftime("%Y-%m-%dT%H:%M:%S%z")
+    print(ts, *args, **kwargs)  # noqa: T201 — intentional print inside log helper
+
+
 # ── Public API ────────────────────────────────────────────────────────────────
 
 def get_bars(symbol: str) -> pd.DataFrame:
@@ -102,7 +114,7 @@ def _check_kill_switch() -> bool:
 def _load_playbook_symbols() -> list[str]:
     """Read daily_playbook.json and return symbols where allow_scalping is true."""
     if not PLAYBOOK_FILE.exists():
-        print(f"[STREAM] No playbook found at {PLAYBOOK_FILE}")
+        _log(f"[STREAM] No playbook found at {PLAYBOOK_FILE}")
         return []
     try:
         playbook = json.loads(PLAYBOOK_FILE.read_text())
@@ -112,7 +124,7 @@ def _load_playbook_symbols() -> list[str]:
                 symbols.append(sym)
         return symbols
     except Exception as e:
-        print(f"[STREAM] Error reading playbook: {e}")
+        _log(f"[STREAM] Error reading playbook: {e}")
         return []
 
 
@@ -137,7 +149,7 @@ async def _on_bar(bar):
     global _shutdown
 
     if _check_kill_switch():
-        print("[STREAM] Kill switch engaged — disconnecting")
+        _log("[STREAM] Kill switch engaged — disconnecting")
         _shutdown = True
         return
 
@@ -161,14 +173,14 @@ async def _on_bar(bar):
         try:
             cb(symbol, bar_dict)
         except Exception as e:
-            print(f"[STREAM] Callback error: {e}")
+            _log(f"[STREAM] Callback error: {e}")
 
 
 def _print_bar(symbol: str, bar: dict):
     """Default callback: print bar to stdout."""
     vwap = get_vwap(symbol)
     window_len = len(_bar_windows.get(symbol, []))
-    print(f"  {bar['timestamp'][:19]}  {symbol:5}  "
+    _log(f"  {bar['timestamp'][:19]}  {symbol:5}  "
           f"O={bar['open']:<8.2f} H={bar['high']:<8.2f} "
           f"L={bar['low']:<8.2f} C={bar['close']:<8.2f} "
           f"V={bar['volume']:<8}  VWAP={vwap:.2f}  "
@@ -191,8 +203,8 @@ async def _run_stream(symbols: list[str], quiet: bool = False):
 
     _stream.subscribe_bars(_on_bar, *symbols)
 
-    print(f"[STREAM] Subscribed to 1-min bars: {', '.join(symbols)}")
-    print(f"[STREAM] Feed: IEX | Window: {WINDOW_SIZE} bars | Kill switch: {'ENGAGED' if _check_kill_switch() else 'clear'}")
+    _log(f"[STREAM] Subscribed to 1-min bars: {', '.join(symbols)}")
+    _log(f"[STREAM] Feed: IEX | Window: {WINDOW_SIZE} bars | Kill switch: {'ENGAGED' if _check_kill_switch() else 'clear'}")
 
     # Run the stream in a background task so we can check shutdown flag
     _auth_failures = 0
@@ -206,17 +218,17 @@ async def _run_stream(symbols: list[str], quiet: bool = False):
             err = str(e).lower()
             if "connection limit" in err or "auth failed" in err:
                 _auth_failures += 1
-                print(f"[STREAM] Auth/connection error: {e} (attempt {_auth_failures})")
+                _log(f"[STREAM] Auth/connection error: {e} (attempt {_auth_failures})")
                 if _auth_failures >= 3:
-                    print("[STREAM] Too many auth failures — exiting. "
+                    _log("[STREAM] Too many auth failures — exiting. "
                           "Check for orphaned connections or upgrade Alpaca plan.")
                     _shutdown = True
             else:
-                print(f"[STREAM] ValueError: {e}")
+                _log(f"[STREAM] ValueError: {e}")
                 _shutdown = True
         except Exception as e:
             if not _shutdown:
-                print(f"[STREAM] Connection error: {e}")
+                _log(f"[STREAM] Connection error: {e}")
                 _shutdown = True
 
     stream_task = asyncio.create_task(_run())
@@ -225,10 +237,10 @@ async def _run_stream(symbols: list[str], quiet: bool = False):
     while not _shutdown:
         await asyncio.sleep(5)
         if _check_kill_switch():
-            print("[STREAM] Kill switch detected — shutting down")
+            _log("[STREAM] Kill switch detected — shutting down")
             _shutdown = True
         if not _is_market_hours():
-            print("[STREAM] Market closed — shutting down")
+            _log("[STREAM] Market closed — shutting down")
             _shutdown = True
 
     # Cleanup
@@ -249,7 +261,7 @@ def main():
     # Signal handlers
     def _handle_signal(sig, frame):
         global _shutdown
-        print(f"\n[STREAM] Received signal {sig} — shutting down")
+        _log(f"\n[STREAM] Received signal {sig} — shutting down")
         _shutdown = True
 
     signal.signal(signal.SIGINT, _handle_signal)
@@ -258,44 +270,44 @@ def main():
     # Kill switch check
     if _check_kill_switch():
         reason = KILL_SWITCH_FILE.read_text().strip()
-        print(f"[STREAM] Kill switch engaged: {reason}")
+        _log(f"[STREAM] Kill switch engaged: {reason}")
         sys.exit(0)
 
     # Load symbols from playbook
     symbols = _load_playbook_symbols()
     if not symbols:
-        print("[STREAM] No scalping-enabled symbols in playbook. Nothing to stream.")
-        print("[STREAM] Run the daily pipeline first to generate a playbook.")
+        _log("[STREAM] No scalping-enabled symbols in playbook. Nothing to stream.")
+        _log("[STREAM] Run the daily pipeline first to generate a playbook.")
         sys.exit(0)
 
-    print(f"[STREAM] Symbols from playbook: {symbols}")
+    _log(f"[STREAM] Symbols from playbook: {symbols}")
 
     # Market hours check
     if not _is_market_hours():
         now_et = datetime.now(ET)
-        print(f"[STREAM] Market is closed (current ET: {now_et.strftime('%H:%M %A')})")
-        print(f"[STREAM] Market hours: 9:30 AM - 4:00 PM ET, Monday-Friday")
+        _log(f"[STREAM] Market is closed (current ET: {now_et.strftime('%H:%M %A')})")
+        _log(f"[STREAM] Market hours: 9:30 AM - 4:00 PM ET, Monday-Friday")
 
         # Still test the connection
-        print(f"[STREAM] Testing websocket connection...")
+        _log(f"[STREAM] Testing websocket connection...")
         try:
             test_stream = StockDataStream(
                 api_key=os.getenv("ALPACA_API_KEY_ID"),
                 secret_key=os.getenv("ALPACA_SECRET_KEY"),
                 feed=DataFeed.IEX,
             )
-            print(f"[STREAM] Connection OK — websocket client initialized")
-            print(f"[STREAM] Will stream {', '.join(symbols)} when market opens")
+            _log(f"[STREAM] Connection OK — websocket client initialized")
+            _log(f"[STREAM] Will stream {', '.join(symbols)} when market opens")
         except Exception as e:
-            print(f"[STREAM] Connection FAILED: {e}")
+            _log(f"[STREAM] Connection FAILED: {e}")
             sys.exit(1)
         sys.exit(0)
 
     # Run
-    print(f"\n[STREAM] Starting 1-minute bar stream...")
-    print(f"{'─'*90}")
+    _log(f"\n[STREAM] Starting 1-minute bar stream...")
+    _log(f"{'─'*90}")
     asyncio.run(_run_stream(symbols, quiet=quiet))
-    print(f"\n[STREAM] Stream stopped.")
+    _log(f"\n[STREAM] Stream stopped.")
 
 
 if __name__ == "__main__":

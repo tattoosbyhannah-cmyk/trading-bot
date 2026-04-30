@@ -50,15 +50,15 @@ fi
 
 log "=== Starting daily pipeline for $DATE_TAG ==="
 
-# 3. Per-symbol majority vote (analysis only)
-# Execution disabled pending live-readiness gate.
-# Re-enable per-symbol manually from CLI:
-#   python majority_vote_orchestrator.py USO --execute
+# 3. Per-symbol majority vote with paper-trading execution.
+# APPROVED LONG/SHORT decisions trade at 5% risk-scaled size; HOLD skips.
+# Disable per-symbol from CLI by running:
+#   python majority_vote_orchestrator.py USO   (no --execute)
 ERRORS=""
 for SYMBOL in "${SYMBOLS[@]}"; do
     SYMBOL_LOG="$LOG_DIR/daily_${SYMBOL}_${DATE_TAG}.log"
     log "Running majority vote: $SYMBOL -> $SYMBOL_LOG"
-    if python "$TRADING_BOT_DIR/majority_vote_orchestrator.py" "$SYMBOL" \
+    if python "$TRADING_BOT_DIR/majority_vote_orchestrator.py" "$SYMBOL" --execute \
         > "$SYMBOL_LOG" 2>&1; then
         log "  $SYMBOL: OK"
     else

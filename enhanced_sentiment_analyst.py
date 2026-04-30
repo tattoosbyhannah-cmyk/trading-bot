@@ -53,6 +53,15 @@ class EnhancedSentimentReport(BaseModel):
     headline_summary: str = Field(description="2-3 sentence summary of news impact")
     catalyst_alerts: List[str] = Field(description="Upcoming events or catalysts")
     economic_calendar: List[str] = Field(description="Relevant upcoming economic releases")
+    diagnostics: dict = Field(
+        default_factory=dict,
+        description=(
+            "Per-call fetch diagnostics: per-query article counts, total_raw, "
+            "total_deduped, newest/oldest article timestamps, top_headlines. "
+            "Populated by analyze_enhanced_sentiment from fetch_broader_news's "
+            "diagnostics_dict; captured in agent_calls.jsonl via @log_agent_call."
+        ),
+    )
 
 
 # ── Part 2: Multi-Query News Fetch ───────────────────────────────────────────
@@ -197,6 +206,7 @@ def analyze_enhanced_sentiment(symbol: str) -> EnhancedSentimentReport:
             ),
             catalyst_alerts=["No data — monitor manually for breaking developments"],
             economic_calendar=[],
+            diagnostics=diagnostics,
         )
 
     # Fix 3: Compute confidence floor from article statistics
@@ -252,6 +262,9 @@ Be specific about dates and expected impacts."""
     # Fix 3: Enforce confidence floor — LLM cannot rate below what article volume warrants
     if report.confidence < base_confidence:
         report.confidence = base_confidence
+
+    # Attach fetch diagnostics so @log_agent_call captures them in agent_calls.jsonl
+    report.diagnostics = diagnostics
 
     return report
 

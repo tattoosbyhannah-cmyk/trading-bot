@@ -39,3 +39,8 @@ playbook/
 *.tmp
 *~
 .DS_Store
+.env
+venv/
+chromadb-data*/
+__pycache__/
+*.pre-*

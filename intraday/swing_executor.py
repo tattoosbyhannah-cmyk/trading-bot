@@ -62,6 +62,18 @@ ORDER_TIMEOUT_SEC = 60
 MIN_SIGNAL_STRENGTH = 0.5
 
 
+# ── Log helper: ISO timestamp prefix on every line ──────────────────────────
+
+def _log(*args, **kwargs):
+    """Wraps print() with an ISO-timestamp prefix in America/New_York for service log correlation.
+    A leading '\\n' in the first arg becomes a real blank line so the timestamp lands on the content."""
+    if args and isinstance(args[0], str) and args[0].startswith("\n"):
+        print()  # noqa: T201 — separator blank line; timestamp lands on the next call
+        args = (args[0].lstrip("\n"),) + args[1:]
+    ts = datetime.now(ET).strftime("%Y-%m-%dT%H:%M:%S%z")
+    print(ts, *args, **kwargs)  # noqa: T201 — intentional print inside log helper
+
+
 # ── Intraday ATR computation ─────────────────────────────────────────────────
 
 def _compute_intraday_atr_pct(bars_df: pd.DataFrame) -> float:
@@ -124,6 +136,7 @@ class TradeRecord:
 class SwingExecutor:
     def __init__(self, playbook: dict):
         self.playbook = playbook  # symbol -> entry from daily_playbook
+        self._playbook_mtime = PLAYBOOK_FILE.stat().st_mtime
         self.broker = get_broker("alpaca")
         self.positions: dict[str, OpenPosition] = {}
         self.pending_orders: dict[str, dict] = {}
@@ -132,13 +145,24 @@ class SwingExecutor:
         self.intraday_atr: dict[str, float] = {}  # symbol -> 1-min ATR %
         self.today = datetime.now(ET).date()
 
+    def _maybe_reload_playbook(self):
+        try:
+            mtime = PLAYBOOK_FILE.stat().st_mtime
+            if mtime > self._playbook_mtime:
+                new_pb = json.loads(PLAYBOOK_FILE.read_text())
+                self.playbook = new_pb.get("symbols", {})
+                self._playbook_mtime = mtime
+                _log(f"[SWING] Playbook hot-reloaded (mtime={mtime})")
+        except Exception as e:
+            _log(f"[SWING] Playbook reload failed: {e}")
+
     def _reset_if_new_day(self):
         now = datetime.now(ET).date()
         if now != self.today:
             self.trade_counts.clear()
             self.daily_pnl.clear()
             self.today = now
-            print(f"[EXEC] New trading day: {now}")
+            _log(f"[EXEC] New trading day: {now}")
 
     def _in_trading_window(self) -> bool:
         now = datetime.now(ET)
@@ -185,7 +209,7 @@ class SwingExecutor:
             result = self.broker.submit_order(order)
             return result.order_id
         except Exception as e:
-            print(f"[EXEC] Order failed for {sig.symbol}: {e}")
+            _log(f"[EXEC] Order failed for {sig.symbol}: {e}")
             return None
 
     def _check_order_fill(self, order_id: str) -> Optional[float]:
@@ -200,17 +224,35 @@ class SwingExecutor:
 
     def _close_position(self, pos: OpenPosition, exit_price: float,
                         reason: str):
-        """Market order to close, log, alert."""
+        """Close order. Hard-close uses an extended-hours marketable LIMIT
+        for same-day settlement; all other reasons use MARKET TIF=IOC."""
         try:
             check_kill_switch()
             side = OrderSide.SELL if pos.direction == "LONG" else OrderSide.BUY
-            order = OrderRequest(
-                symbol=pos.symbol, qty=pos.shares, side=side,
-                order_type=OrderType.MARKET, time_in_force="ioc",
-            )
+            if reason == "hard_close":
+                # Alpaca rejects MARKET orders in extended hours and rejects
+                # extended_hours=True during regular hours. So: marketable LIMIT
+                # with a 30 bps offset, TIF=DAY, extended_hours=True. Routes
+                # cleanly post-16:00 ET; during 15:45-16:00 ET regular session
+                # the offset still makes the LIMIT marketable on the active book.
+                offset = 0.003
+                if side == OrderSide.SELL:
+                    limit_px = round(exit_price * (1 - offset), 2)
+                else:
+                    limit_px = round(exit_price * (1 + offset), 2)
+                order = OrderRequest(
+                    symbol=pos.symbol, qty=pos.shares, side=side,
+                    order_type=OrderType.LIMIT, time_in_force="day",
+                    limit_price=limit_px, extended_hours=True,
+                )
+            else:
+                order = OrderRequest(
+                    symbol=pos.symbol, qty=pos.shares, side=side,
+                    order_type=OrderType.MARKET, time_in_force="ioc",
+                )
             self.broker.submit_order(order)
         except Exception as e:
-            print(f"[EXEC] Close order failed for {pos.symbol}: {e}")
+            _log(f"[EXEC] Close order failed for {pos.symbol}: {e}")
 
         hold_minutes = (datetime.now(ET) - pos.entry_time).total_seconds() / 60
         if pos.direction == "LONG":
@@ -240,7 +282,7 @@ class SwingExecutor:
         self.daily_pnl[pos.symbol] = self.daily_pnl.get(pos.symbol, 0) + pnl_pct
 
         emoji = "✅" if pnl_pct > 0 else "❌"
-        print(f"  {emoji} EXIT {pos.symbol} {pos.direction} | {reason} | "
+        _log(f"  {emoji} EXIT {pos.symbol} {pos.direction} | {reason} | "
               f"${pos.entry_price:.2f} → ${exit_price:.2f} | "
               f"{pnl_pct:+.3f}% | {hold_minutes:.0f}min")
 
@@ -305,6 +347,7 @@ class SwingExecutor:
 
     def _try_entry(self, sig: Signal):
         """Validate all preconditions and enter a trade."""
+        self._maybe_reload_playbook()
         symbol = sig.symbol
         pb = self.playbook.get(symbol, {})
 
@@ -327,16 +370,24 @@ class SwingExecutor:
 
         max_loss = pb.get("max_intraday_loss_pct", 0.5)
         if self.daily_pnl.get(symbol, 0) <= -max_loss:
-            print(f"  [EXEC] {symbol} daily loss limit hit ({self.daily_pnl[symbol]:.2f}%)")
+            _log(f"  [EXEC] {symbol} daily loss limit hit ({self.daily_pnl[symbol]:.2f}%)")
             return
 
         # Position sizing
         spread = estimate_spread(symbol)
         if spread["spread_bps"] > SPREAD_REJECT_BPS:
-            print(f"  [EXEC] {symbol} REJECTED: spread {spread['spread_bps']:.0f}bps > "
+            _log(f"  [EXEC] {symbol} REJECTED: spread {spread['spread_bps']:.0f}bps > "
                   f"{SPREAD_REJECT_BPS}bps circuit-breaker")
             return
-        base_pct = pb.get("position_size_pct", 0.2)
+        base_pct = (
+            pb.get("intraday_position_size_pct")            # explicit intraday key (added in Step 2)
+            or pb.get("position_size_pct")                  # daily field — fallback if intraday key missing
+            or 2.0                                          # safety fallback if both keys missing
+        )
+        if base_pct < 0.5:
+            _log(f"  [EXEC] {sig.symbol} WARNING: base_pct={base_pct}% suspiciously low — "
+                  f"clamping to 2.0% (check playbook config)")
+            base_pct = 2.0
         # Scale by signal strength (capped at base)
         sized_pct = min(base_pct, base_pct * (sig.strength / 0.7))
 
@@ -348,6 +399,16 @@ class SwingExecutor:
         position_val = portfolio_val * (sized_pct / 100)
         shares = max(1, int(position_val / sig.entry_price))
 
+        # Cancel stale opposite-side orders to prevent wash trade rejection (Alpaca code 40310000)
+        try:
+            open_orders = self.broker.get_open_orders(symbol=sig.symbol)
+            for order in open_orders:
+                self.broker.cancel_order(order.id)
+                _log(f"  [EXEC] {sig.symbol} cancelled stale order {order.id[:8]} "
+                      f"({order.side} {order.qty})")
+        except Exception as e:
+            _log(f"  [EXEC] {sig.symbol} order cancel pre-check failed: {e}")
+
         # Submit limit order (IOC = fill immediately or cancel)
         order_id = self._submit_limit_entry(sig, shares)
         if not order_id:
@@ -356,7 +417,7 @@ class SwingExecutor:
         # Check fill (IOC fills instantly or not at all)
         fill_price = self._check_order_fill(order_id)
         if not fill_price:
-            print(f"  [EXEC] {symbol} limit order not filled @ ${sig.entry_price:.2f}")
+            _log(f"  [EXEC] {symbol} limit order not filled @ ${sig.entry_price:.2f}")
             return
 
         # Compute ATR-scaled stops using profiler's ATR multiples
@@ -393,7 +454,7 @@ class SwingExecutor:
         )
         self.trade_counts[symbol] = self.trade_counts.get(symbol, 0) + 1
 
-        print(f"  📈 ENTRY {symbol} {sig.direction} | {shares} shares @ ${fill_price:.2f} "
+        _log(f"  📈 ENTRY {symbol} {sig.direction} | {shares} shares @ ${fill_price:.2f} "
               f"| str={sig.strength:.2f} | #{self.trade_counts[symbol]}/{pb.get('max_intraday_trades',0)} "
               f"| ATR={atr_pct:.3f}% → stop={sl_pct:.3f}%/target={tp_pct:.3f}% "
               f"| {sig.reason}")
@@ -427,38 +488,38 @@ class SwingExecutor:
     # ── Summary ───────────────────────────────────────────────────────────
 
     def print_summary(self):
-        print(f"\n{'='*70}")
-        print(f"📊 INTRADAY SUMMARY — {datetime.now(ET).strftime('%Y-%m-%d %H:%M ET')}")
-        print(f"{'='*70}")
-        print(f"Open positions: {len(self.positions)}")
+        _log(f"\n{'='*70}")
+        _log(f"📊 INTRADAY SUMMARY — {datetime.now(ET).strftime('%Y-%m-%d %H:%M ET')}")
+        _log(f"{'='*70}")
+        _log(f"Open positions: {len(self.positions)}")
         for sym, pos in self.positions.items():
             hold = (datetime.now(ET) - pos.entry_time).total_seconds() / 60
-            print(f"  {sym} {pos.direction} {pos.shares}sh @ ${pos.entry_price:.2f} "
+            _log(f"  {sym} {pos.direction} {pos.shares}sh @ ${pos.entry_price:.2f} "
                   f"({hold:.0f}min)")
-        print(f"\nTrade counts today:")
+        _log(f"\nTrade counts today:")
         for sym in sorted(set(list(self.trade_counts.keys()) + list(self.daily_pnl.keys()))):
             count = self.trade_counts.get(sym, 0)
             pnl = self.daily_pnl.get(sym, 0)
             max_t = self.playbook.get(sym, {}).get("max_intraday_trades", 0)
-            print(f"  {sym}: {count}/{max_t} trades | P&L: {pnl:+.3f}%")
-        print(f"{'='*70}\n")
+            _log(f"  {sym}: {count}/{max_t} trades | P&L: {pnl:+.3f}%")
+        _log(f"{'='*70}\n")
 
 
 # ── Main: unified intraday pipeline ──────────────────────────────────────────
 
 def main():
-    print(f"[SWING] Intraday Swing Executor starting")
-    print(f"[SWING] Time: {datetime.now(ET).strftime('%Y-%m-%d %H:%M:%S ET')}")
+    _log(f"[SWING] Intraday Swing Executor starting")
+    _log(f"[SWING] Time: {datetime.now(ET).strftime('%Y-%m-%d %H:%M:%S ET')}")
 
     # Kill switch
     if KILL_SWITCH_FILE.exists():
         reason = KILL_SWITCH_FILE.read_text().strip()
-        print(f"[SWING] Kill switch engaged: {reason}")
+        _log(f"[SWING] Kill switch engaged: {reason}")
         sys.exit(0)
 
     # Load playbook
     if not PLAYBOOK_FILE.exists():
-        print(f"[SWING] No playbook at {PLAYBOOK_FILE} — run daily pipeline first")
+        _log(f"[SWING] No playbook at {PLAYBOOK_FILE} — run daily pipeline first")
         sys.exit(1)
 
     playbook = json.loads(PLAYBOOK_FILE.read_text())
@@ -467,20 +528,20 @@ def main():
                       if cfg.get("allow_scalping", False)]
 
     if not active_symbols:
-        print(f"[SWING] No scalping-enabled symbols in playbook")
+        _log(f"[SWING] No scalping-enabled symbols in playbook")
         sys.exit(0)
 
-    print(f"[SWING] Active symbols: {active_symbols}")
+    _log(f"[SWING] Active symbols: {active_symbols}")
     for sym in active_symbols:
         cfg = symbols_config[sym]
-        print(f"  {sym}: {cfg['direction']} conv={cfg['conviction']} "
+        _log(f"  {sym}: {cfg['direction']} conv={cfg['conviction']} "
               f"max_trades={cfg['max_intraday_trades']}")
 
     # Market hours check
     if not stream_bars._is_market_hours():
         now_et = datetime.now(ET)
-        print(f"[SWING] Market closed ({now_et.strftime('%H:%M %A ET')})")
-        print(f"[SWING] Will exit. Use systemd timer for auto-start at market open.")
+        _log(f"[SWING] Market closed ({now_et.strftime('%H:%M %A ET')})")
+        _log(f"[SWING] Will exit. Use systemd timer for auto-start at market open.")
         sys.exit(0)
 
     # Build components
@@ -494,7 +555,7 @@ def main():
     # Signal handlers
     def _handle_signal(sig, frame):
         stream_bars._shutdown = True
-        print(f"\n[SWING] Received signal {sig} — shutting down")
+        _log(f"\n[SWING] Received signal {sig} — shutting down")
         # Close all open positions
         for sym in list(executor.positions.keys()):
             bars_df = stream_bars.get_bars(sym)
@@ -509,19 +570,19 @@ def main():
     signal.signal(signal.SIGINT, _handle_signal)
     signal.signal(signal.SIGTERM, _handle_signal)
 
-    print(f"\n[SWING] Starting intraday bar stream + execution...")
-    print(f"[SWING] Entry window: 9:45 AM - 3:30 PM ET")
-    print(f"[SWING] Hard close: 3:45 PM ET")
-    print(f"[SWING] Min signal strength: {MIN_SIGNAL_STRENGTH}")
-    print(f"[SWING] Default TP: +{DEFAULT_TAKE_PROFIT_PCT}% | Default SL: -{DEFAULT_STOP_LOSS_PCT}% (ATR-scaled per trade)")
-    print(f"{'─'*70}")
+    _log(f"\n[SWING] Starting intraday bar stream + execution...")
+    _log(f"[SWING] Entry window: 9:45 AM - 3:30 PM ET")
+    _log(f"[SWING] Hard close: 3:45 PM ET")
+    _log(f"[SWING] Min signal strength: {MIN_SIGNAL_STRENGTH}")
+    _log(f"[SWING] Default TP: +{DEFAULT_TAKE_PROFIT_PCT}% | Default SL: -{DEFAULT_STOP_LOSS_PCT}% (ATR-scaled per trade)")
+    _log(f"{'─'*70}")
 
     # Run the stream (blocks until shutdown)
     asyncio.run(stream_bars._run_stream(active_symbols, quiet=True))
 
     # Final summary
     executor.print_summary()
-    print("[SWING] Executor stopped.")
+    _log("[SWING] Executor stopped.")
 
 
 if __name__ == "__main__":
