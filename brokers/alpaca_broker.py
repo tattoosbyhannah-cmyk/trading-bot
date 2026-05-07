@@ -184,8 +184,16 @@ class AlpacaBroker(BaseBroker):
         return float(trade[symbol].price)
 
     def get_latest_quote(self, symbol: str) -> dict:
+        # Use Alpaca's DELAYED_SIP feed (15-min lag, free on paper subscription)
+        # rather than the IEX-only default. IEX is one of ~16 NMS venues and posts
+        # systematically wide cosmetic quotes for some ETFs (USO routinely shows
+        # 200-700 bps on IEX vs 3-10 bps on the consolidated tape). The 200 bps
+        # circuit-breaker exists for flash-crash / halt detection — events that
+        # persist for many minutes — so 15-min-lagged consolidated NBBO is the
+        # right input. See docs/uso_spread_investigation.md for the audit.
+        from alpaca.data.enums import DataFeed
         quote = self._data.get_stock_latest_quote(
-            StockLatestQuoteRequest(symbol_or_symbols=symbol))
+            StockLatestQuoteRequest(symbol_or_symbols=symbol, feed=DataFeed.DELAYED_SIP))
         q = quote[symbol]
         mid = (q.bid_price + q.ask_price) / 2
         spread_bps = ((q.ask_price - q.bid_price) / mid * 10000) if mid > 0 else 0

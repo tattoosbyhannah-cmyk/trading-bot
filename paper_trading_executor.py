@@ -465,6 +465,43 @@ class PaperTradingManager:
                        spread_bps: float = 0) -> PaperTradeResult:
         """Execute a trade via broker adapter."""
         check_kill_switch()
+
+        # Pre-cancel stale orders on this symbol to avoid Alpaca code 40310000
+        # (potential wash-trade rejection when a new BUY/SELL collides with an
+        # existing opposite-side stop order). Mirrors the W4 step-3 pattern in
+        # intraday/swing_executor.py:_try_entry. Stops from prior fills should
+        # have been cancelled at flatten time but sometimes persist when the
+        # decision is same-direction add-on (e.g., LONG signal on existing LONG).
+        #
+        # Alpaca's cancel API is async: cancel_order returns immediately on
+        # accept, but the order stays in `pending_cancel` for ~1 sec while
+        # Alpaca propagates. If we submit the new BUY/SELL during that window
+        # the wash-trade reject still fires, citing the still-pending order.
+        # Poll each cancelled order until it's fully `canceled` before continuing.
+        try:
+            open_orders = self.broker.get_open_orders(symbol=symbol)
+            cancelled_ids = []
+            for order in open_orders:
+                self.broker.cancel_order(order.id)
+                cancelled_ids.append(str(order.id))
+                print(f"  [EXEC] {symbol} cancelled stale order {str(order.id)[:8]} "
+                      f"({order.side} {order.qty})")
+            # Wait for each cancellation to fully propagate (cap 5 s per order)
+            for oid in cancelled_ids:
+                deadline = time.time() + 5.0
+                while time.time() < deadline:
+                    try:
+                        status = str(self.broker._trading.get_order_by_id(oid).status).lower()
+                        if "canceled" in status or "cancelled" in status:
+                            break
+                        if "filled" in status or "rejected" in status or "expired" in status:
+                            break
+                    except Exception:
+                        break
+                    time.sleep(0.2)
+        except Exception as e:
+            print(f"  [EXEC] {symbol} order cancel pre-check failed: {e}")
+
         try:
             expected_price = self.get_current_price(symbol) or decision_price
 

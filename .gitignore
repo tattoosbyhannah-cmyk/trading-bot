@@ -26,7 +26,10 @@ RAG Wave*/
 # Planning docs
 *.odt
 next steps*
-docs/
+docs/*
+# …but keep audit/investigation docs that inform code changes
+!docs/uso_spread_investigation.md
+!docs/hold_behavior_audit.md
 
 # Generated files
 playbook/

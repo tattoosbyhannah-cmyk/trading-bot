@@ -71,7 +71,17 @@ def _get_decision_for_symbol(symbol: str) -> dict:
     from db.queries import load_recent_decisions
     recent = load_recent_decisions(symbol, days=7)
     if recent:
-        return recent[-1]
+        # Walk back through recent decisions newest → oldest and pick the first
+        # one with a real LONG/SHORT direction and a non-null stop_loss. HOLD
+        # decisions no longer carry a fabricated stop (per master_orchestrator
+        # fix 2026-05-06); falling back this way preserves the prior real stop
+        # as the ratchet's comparison basis. See docs/hold_behavior_audit.md.
+        for d in reversed(recent):
+            direction = (d.get("decision") or "").upper()
+            stop = d.get("stop_loss")
+            if direction in ("LONG", "SHORT") and stop is not None:
+                return d
+        # Only HOLDs in the window — fall through to other lookups (proxy / JSONL)
 
     # Proxy fallback: the position symbol may be the executed proxy of a routed
     # SHORT decision filed under the original symbol. Look it up via route_taken.

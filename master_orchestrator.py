@@ -216,11 +216,19 @@ def _compute_price_levels(llm_out: _LLMDecision, entry_price: float,
     sl_pct = abs(llm_out.stop_loss_pct)
     tp_pct = abs(llm_out.price_target_pct)
 
-    if entry_price and entry_price > 0:
+    # HOLD has no actual side to put a stop on. Fabricating a LONG-math stop
+    # for a HOLD record is not just meaningless — it actively confuses
+    # ratchet_stops.py which uses the most-recent decision's stop_loss as the
+    # comparison basis (see docs/hold_behavior_audit.md). Return None instead;
+    # the ratchet has a fallback that walks back to the prior LONG/SHORT.
+    if direction == "HOLD":
+        stop_loss = None
+        price_target = None
+    elif entry_price and entry_price > 0:
         if direction == "SHORT":
             stop_loss = round(entry_price * (1 + sl_pct / 100), 2)
             price_target = round(entry_price * (1 - tp_pct / 100), 2)
-        else:  # LONG or HOLD
+        else:  # LONG
             stop_loss = round(entry_price * (1 - sl_pct / 100), 2)
             price_target = round(entry_price * (1 + tp_pct / 100), 2)
     else:
