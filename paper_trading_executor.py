@@ -34,6 +34,8 @@ load_dotenv(Path(__file__).resolve().parent / '.env' if (Path(__file__).resolve(
 KILL_SWITCH_FILE = Path(__file__).parent / "KILL_SWITCH"
 FILL_LOG = Path(__file__).parent / "logs" / "fill_records.jsonl"
 BEARISH_PROXIES_FILE = Path(__file__).parent / "config" / "bearish_proxies.yaml"
+INSTRUMENTS_FILE = Path(__file__).parent / "config" / "instruments.yaml"
+RISK_LIMITS_FILE = Path(__file__).parent / "config" / "risk_limits.yaml"
 ROUTE_EVENTS_LOG = Path(__file__).parent / "logs" / "route_events.jsonl"
 
 
@@ -50,7 +52,129 @@ def check_kill_switch():
 # ── Bearish-proxy routing (W4) ───────────────────────────────────────────────
 
 _bearish_proxies_cache: Optional[Dict[str, dict]] = None
+_instruments_cache: Optional[Dict[str, dict]] = None
+_risk_limits_cache: Optional[Dict] = None
 _route_column_ready: bool = False
+
+
+def _load_instruments() -> Dict[str, dict]:
+    """Lazy-load + cache config/instruments.yaml. Returns the inner 'instruments' dict."""
+    global _instruments_cache
+    if _instruments_cache is None:
+        try:
+            import yaml
+            full = yaml.safe_load(INSTRUMENTS_FILE.read_text()) or {}
+            _instruments_cache = full.get("instruments", {})
+        except Exception as e:
+            logging.warning(f"instruments.yaml load failed: {e}")
+            _instruments_cache = {}
+    return _instruments_cache
+
+
+def _load_risk_limits() -> Dict:
+    """Lazy-load + cache config/risk_limits.yaml. Empty dict on failure."""
+    global _risk_limits_cache
+    if _risk_limits_cache is None:
+        try:
+            import yaml
+            _risk_limits_cache = yaml.safe_load(RISK_LIMITS_FILE.read_text()) or {}
+        except Exception as e:
+            logging.warning(f"risk_limits.yaml load failed: {e}")
+            _risk_limits_cache = {}
+    return _risk_limits_cache
+
+
+def _symbol_metadata(symbol: str) -> Optional[dict]:
+    """Map a symbol to {asset_class, leverage} where leverage is signed.
+    +1: direct exposure (e.g., UNG = +1x natgas)
+    -2: inverse leveraged exposure (e.g., KOLD = -2x natgas)
+    Returns None if symbol not registered as either a primary instrument or a known proxy.
+    """
+    sym = symbol.upper()
+    instruments = _load_instruments()
+    if sym in instruments:
+        ac = instruments[sym].get("asset_class")
+        if ac:
+            return {"asset_class": ac, "leverage": 1}
+    # Otherwise look for it as a proxy in any bearish_proxies entry
+    for orig, route in _load_bearish_proxies().items():
+        if (route or {}).get("proxy", "").upper() == sym:
+            ac = route.get("asset_class")
+            lev = int(route.get("leverage", 1))
+            if ac:
+                return {"asset_class": ac, "leverage": lev}
+    return None
+
+
+def _check_exposure_cap(manager, route: dict, equity: float) -> dict:
+    """Pre-trade cross-position exposure cap. Sums same-asset-class same-direction
+    economic exposure (effective notional = qty × price × abs(leverage)) and compares
+    against the configured cap. Returns an audit dict; caller decides on action.
+    """
+    cap_pct = float(_load_risk_limits().get("exposure_cap_pct", 7.5))
+    asset_class = (route or {}).get("asset_class")
+    if not asset_class or equity <= 0:
+        return {"action": "allowed", "reason": "no_asset_class_or_equity", "cap_pct": cap_pct}
+
+    proxy_leverage = int(route.get("leverage", 1))
+    # Routed trades always submit LONG on the proxy; economic direction toward the
+    # underlying = signum(leverage). A -2x proxy LONG is bearish on the underlying;
+    # a +1x "invert direction" proxy LONG is bullish on the underlying.
+    proposed_direction = -1 if proxy_leverage < 0 else 1
+    direction_label = "bearish" if proposed_direction == -1 else "bullish"
+
+    proxy_symbol = route.get("executed_symbol", "")
+    proxy_price = manager.get_current_price(proxy_symbol) or 0.0
+    if proxy_price <= 0:
+        return {"action": "allowed", "reason": "proxy_price_unavailable", "cap_pct": cap_pct,
+                "asset_class": asset_class, "direction": direction_label}
+
+    sized_pct = float(route.get("sized_pct", 0))
+    proxy_shares = manager.calculate_share_quantity(proxy_symbol, sized_pct, proxy_price)
+    proposed_effective = proxy_shares * proxy_price * abs(proxy_leverage)
+
+    # Sum existing same-direction same-asset-class effective notional
+    contributing = []
+    existing_effective = 0.0
+    try:
+        positions = manager.get_current_positions()
+    except Exception as e:
+        logging.warning(f"exposure cap: get_current_positions failed: {e}")
+        positions = {}
+
+    for sym, qty in positions.items():
+        if not qty:
+            continue
+        meta = _symbol_metadata(sym)
+        if not meta or meta["asset_class"] != asset_class:
+            continue
+        sym_lev = meta["leverage"]
+        # Economic direction toward underlying = signum(qty × leverage)
+        product = qty * sym_lev
+        sym_dir = -1 if product < 0 else 1
+        if sym_dir != proposed_direction:
+            continue  # opposite direction — doesn't add concentration risk
+        sym_price = manager.get_current_price(sym) or 0.0
+        if sym_price <= 0:
+            continue
+        eff = abs(qty) * sym_price * abs(sym_lev)
+        existing_effective += eff
+        contributing.append({"symbol": sym, "qty": qty, "leverage": sym_lev,
+                             "price": round(sym_price, 4), "effective_notional": round(eff, 2)})
+
+    combined = existing_effective + proposed_effective
+    cap_notional = equity * (cap_pct / 100.0)
+
+    return {
+        "asset_class": asset_class,
+        "direction": direction_label,
+        "existing_pct": round(existing_effective / equity * 100, 3),
+        "proposed_pct": round(proposed_effective / equity * 100, 3),
+        "combined_pct": round(combined / equity * 100, 3),
+        "cap_pct": cap_pct,
+        "action": "allowed" if combined <= cap_notional else "skipped",
+        "contributing_positions": contributing,
+    }
 
 
 def _load_bearish_proxies() -> Dict[str, dict]:
@@ -104,6 +228,53 @@ def _resolve_short_route(original_symbol: str, original_pct: float) -> Optional[
         "original_pct": round(original_pct, 4),
         "asset_class": asset_class,
     }
+
+
+def _compute_proxy_stop(original_stop: float, original_entry: float,
+                        original_leverage: int, proxy_entry: float,
+                        proxy_leverage: int) -> Optional[float]:
+    """Translate a stop-loss from the original symbol's price space into the
+    proxy symbol's price space using leverage-aware math.
+
+    Math (daily-rebalance approximation; ignores multi-day path-dependence drift):
+      stop_dist_signed = (original_stop - original_entry) / original_entry
+      underlying_change = stop_dist_signed / L_orig
+      proxy_change      = underlying_change × L_proxy
+      proxy_stop_price  = proxy_entry × (1 + proxy_change)
+
+    Worked example (UNG SHORT → KOLD LONG):
+      UNG entry=$10.29, stop=$10.91 → stop_dist_signed = +0.0602 (stop above for SHORT)
+      L_orig = +1, L_proxy = -2 → proxy_change = +0.0602 × (-2) / 1 = -0.1204
+      KOLD entry=$25.92 → proxy_stop = $25.92 × (1 - 0.1204) = $22.80
+
+    Returns None if math is degenerate or would put the stop on the WRONG side
+    of the proxy entry (which would mean the routing config has a direction error;
+    a LONG proxy must always have stop < entry).
+    """
+    if (original_entry is None or original_entry <= 0
+            or proxy_entry <= 0 or original_leverage == 0):
+        return None
+    stop_dist_signed = (original_stop - original_entry) / original_entry
+    proxy_change = stop_dist_signed * proxy_leverage / original_leverage
+    proxy_stop = proxy_entry * (1 + proxy_change)
+    # Routed proxy positions are always LONG → stop must be below entry.
+    # If the math puts it above, the routing config has a direction inversion bug;
+    # refuse to submit a meaningless stop and let the caller decide.
+    if proxy_stop >= proxy_entry:
+        logging.warning(
+            f"_compute_proxy_stop: math produced proxy_stop=${proxy_stop:.2f} >= "
+            f"proxy_entry=${proxy_entry:.2f} (proxy LONG would have stop above entry). "
+            f"Likely a direction-inversion error in bearish_proxies.yaml; refusing."
+        )
+        return None
+    # Sanity floor: stop within 50% of entry to avoid pathological edge cases
+    if proxy_stop < proxy_entry * 0.5:
+        logging.warning(
+            f"_compute_proxy_stop: proxy_stop=${proxy_stop:.2f} is <50% of "
+            f"proxy_entry=${proxy_entry:.2f}; refusing as likely arithmetic error."
+        )
+        return None
+    return round(proxy_stop, 2)
 
 
 def _ensure_route_taken_column() -> bool:
@@ -512,6 +683,26 @@ def execute_master_decision(decision: MasterTradingDecision) -> Dict:
                     "route_taken": route,
                 }
 
+            # Cross-position exposure cap (prevents stacking same-direction same-asset-class
+            # exposure beyond the configured limit). See config/risk_limits.yaml.
+            equity = manager.get_portfolio_value()
+            exposure_check = _check_exposure_cap(manager, route, equity)
+            route["exposure_check"] = exposure_check
+            if exposure_check.get("action") == "skipped":
+                cap = exposure_check.get("cap_pct")
+                ac = exposure_check.get("asset_class")
+                combined = exposure_check.get("combined_pct")
+                print(f"[CAP] {symbol} {ac} exposure would exceed {cap}% "
+                      f"(combined {combined}%) — skipping")
+                _persist_route_event(route, calculation_run_id=calc_run_id, trade_result=None)
+                return {
+                    "success": False,
+                    "skipped": True,
+                    "reason": "exposure_cap_exceeded",
+                    "symbol": symbol,
+                    "route_taken": route,
+                }
+
             proxy_shares = manager.calculate_share_quantity(proxy_symbol, sized_pct, proxy_price)
             print(f"Buying {proxy_shares} shares of {proxy_symbol} (routed from {symbol} SHORT)...")
             trade_result = manager.execute_long_trade(
@@ -520,8 +711,6 @@ def execute_master_decision(decision: MasterTradingDecision) -> Dict:
             )
             execution_result['trade'] = trade_result
             execution_result['route_taken'] = route
-
-            _persist_route_event(route, calculation_run_id=calc_run_id, trade_result=trade_result)
 
             if trade_result.success:
                 print(f"✅ Routed long trade executed: {proxy_shares} shares of {proxy_symbol}")
@@ -535,11 +724,49 @@ def execute_master_decision(decision: MasterTradingDecision) -> Dict:
                     )
                 except Exception:
                     pass
-                # Note: stop_loss from the original decision is in the original symbol's
-                # price space and does NOT translate to the proxy. Skipping stop-loss on
-                # routed trades; daily-system stops apply via separate ratchet logic.
+
+                # Translate the original-space stop into proxy price space and submit.
+                # Without this, the routed LONG position has no protection against
+                # adverse overnight moves — fix for "Priority 2: Proxy-aware stop-loss".
+                if decision.stop_loss and decision.entry_price:
+                    orig_meta = _symbol_metadata(symbol)
+                    if orig_meta:
+                        proxy_fill_price = trade_result.filled_price or proxy_price
+                        proxy_stop_price = _compute_proxy_stop(
+                            original_stop=float(decision.stop_loss),
+                            original_entry=float(decision.entry_price),
+                            original_leverage=int(orig_meta["leverage"]),
+                            proxy_entry=float(proxy_fill_price),
+                            proxy_leverage=int(route["leverage"]),
+                        )
+                        proxy_stop_payload = {
+                            "original_stop": round(float(decision.stop_loss), 4),
+                            "original_entry": round(float(decision.entry_price), 4),
+                            "original_leverage": int(orig_meta["leverage"]),
+                            "proxy_entry": round(float(proxy_fill_price), 4),
+                            "proxy_leverage": int(route["leverage"]),
+                            "stop_distance_pct": round(
+                                (float(decision.stop_loss) - float(decision.entry_price))
+                                / float(decision.entry_price), 4),
+                            "computed_proxy_stop": proxy_stop_price,
+                        }
+                        if proxy_stop_price is not None:
+                            stop_order_id = manager.set_stop_loss(proxy_symbol, proxy_stop_price)
+                            proxy_stop_payload["stop_order_id"] = stop_order_id
+                            execution_result['stop_loss_order_id'] = stop_order_id
+                        else:
+                            proxy_stop_payload["stop_order_id"] = None
+                            proxy_stop_payload["skipped_reason"] = "proxy_stop_math_invalid"
+                            print(f"  [WARN] proxy stop math invalid for {proxy_symbol}; no stop submitted")
+                        route["proxy_stop"] = proxy_stop_payload
+                    else:
+                        logging.warning(f"no _symbol_metadata for {symbol}; skipping proxy stop")
+                else:
+                    logging.info(f"no decision.stop_loss for {symbol} routed trade; no proxy stop computed")
             else:
                 print(f"❌ Routed trade failed: {trade_result.error_message}")
+
+            _persist_route_event(route, calculation_run_id=calc_run_id, trade_result=trade_result)
             # Fall through to attach metadata at end of function
         else:
             shares = manager.calculate_share_quantity(symbol, position_pct, current_price)

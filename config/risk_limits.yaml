@@ -1,0 +1,13 @@
+# Risk limits applied at execution time (not gatekeeper-time).
+#
+# exposure_cap_pct: maximum total economic exposure on a single asset_class
+#   in a single direction (bullish or bearish). Counts both direct positions
+#   (notional = qty × price) and routed/leveraged positions (notional × abs(leverage)).
+#   When a SHORT signal would push combined same-direction same-asset-class exposure
+#   above this cap, the new trade is skipped with a [CAP] log line.
+#
+#   Default 7.5% chosen because the per-trade gatekeeper cap is 5%, and 7.5% leaves
+#   room for one full-size position plus a reduced second position before refusing
+#   further concentration. Adjust after 30+ scored outcomes show real concentration risk.
+
+exposure_cap_pct: 7.5

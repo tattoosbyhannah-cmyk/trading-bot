@@ -60,11 +60,24 @@ def _get_open_positions() -> list:
 
 
 def _get_decision_for_symbol(symbol: str) -> dict:
-    """Load the most recent decision for a symbol. SQL first, JSONL fallback."""
+    """Load the most recent decision for a symbol. SQL first, JSONL fallback.
+
+    For proxy-routed positions (the position's symbol is the executed proxy, e.g.
+    KOLD, while the originating decision was filed under the original symbol, e.g.
+    UNG), fall back to looking up the originating decision via route_taken and
+    return a synthesized "virtual decision" in proxy price space so the existing
+    ratchet logic just works.
+    """
     from db.queries import load_recent_decisions
     recent = load_recent_decisions(symbol, days=7)
     if recent:
         return recent[-1]
+
+    # Proxy fallback: the position symbol may be the executed proxy of a routed
+    # SHORT decision filed under the original symbol. Look it up via route_taken.
+    proxy_decision = _get_proxy_decision(symbol)
+    if proxy_decision:
+        return proxy_decision
 
     # Extra fallback for very old decisions
     if not OUTCOMES_LOG.exists():
@@ -80,6 +93,59 @@ def _get_decision_for_symbol(symbol: str) -> dict:
         except Exception:
             continue
     return latest or {}
+
+
+def _get_proxy_decision(proxy_symbol: str) -> dict:
+    """Find the most recent originating decision whose route_taken.executed_symbol
+    matches this proxy symbol, and return a synthesized decision in proxy price
+    space. Returns {} if no such decision exists.
+
+    The synthesized record has symbol=<proxy>, decision='LONG' (routed proxies
+    are always LONG), entry_price=<proxy fill price>, stop_loss=<computed proxy
+    stop>, stop_loss_pct=<distance in proxy space>. Original calc_run_id and
+    decision_id are preserved so audit trails still resolve.
+    """
+    try:
+        from db.connection import db_cursor
+        with db_cursor(commit=False) as cur:
+            cur.execute(
+                """SELECT decision_id, calculation_run_id, symbol, route_taken, created_at
+                   FROM decisions
+                   WHERE route_taken->>'executed_symbol' = %s
+                     AND created_at >= NOW() - INTERVAL '7 days'
+                   ORDER BY created_at DESC
+                   LIMIT 1""",
+                (proxy_symbol,),
+            )
+            row = cur.fetchone()
+        if not row:
+            return {}
+        decision_id, calc_run_id, orig_symbol, route_taken, created_at = row
+    except Exception:
+        return {}
+
+    if not isinstance(route_taken, dict):
+        return {}
+    proxy_stop_payload = route_taken.get("proxy_stop") or {}
+    proxy_entry = proxy_stop_payload.get("proxy_entry")
+    proxy_stop = proxy_stop_payload.get("computed_proxy_stop")
+    if not proxy_entry or not proxy_stop:
+        # Routed trade exists but proxy stop wasn't computed (e.g., no original
+        # stop_loss on the decision). Cannot ratchet; return empty.
+        return {}
+    proxy_entry = float(proxy_entry)
+    proxy_stop = float(proxy_stop)
+    stop_loss_pct_proxy = round(abs(proxy_entry - proxy_stop) / proxy_entry * 100, 2)
+    return {
+        "decision_id": decision_id,
+        "calculation_run_id": calc_run_id,
+        "symbol": proxy_symbol,
+        "decision": "LONG",  # routed proxies are always LONG
+        "entry_price": proxy_entry,
+        "stop_loss": proxy_stop,
+        "stop_loss_pct": stop_loss_pct_proxy,
+        "_proxy_routed_from": orig_symbol,  # diagnostic; ratchet ignores
+    }
 
 
 def _get_current_price(symbol: str) -> float:
