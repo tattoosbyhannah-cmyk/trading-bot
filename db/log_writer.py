@@ -61,6 +61,24 @@ def log_reasoning_run(entry: dict):
         logging.debug(f"Postgres log_reasoning_run failed: {e}")
 
 
+_hold_audit_column_ready = False
+
+
+def _ensure_hold_audit_column():
+    """Idempotent: add decisions.hold_audit JSONB if missing. Cached after first success."""
+    global _hold_audit_column_ready
+    if _hold_audit_column_ready:
+        return True
+    try:
+        from db.connection import db_cursor
+        with db_cursor() as cur:
+            cur.execute("ALTER TABLE decisions ADD COLUMN IF NOT EXISTS hold_audit JSONB")
+        _hold_audit_column_ready = True
+    except Exception as e:
+        logging.debug(f"ALTER decisions ADD hold_audit failed: {e}")
+    return _hold_audit_column_ready
+
+
 def log_decision(entry: dict):
     """Log a decision outcome to both JSONL and Postgres."""
     _append_jsonl(LOG_DIR / "decision_outcomes.jsonl", entry)
@@ -68,15 +86,17 @@ def log_decision(entry: dict):
     if not _pg_available():
         return
     try:
+        _ensure_hold_audit_column()
         from db.connection import db_cursor
+        hold_audit = entry.get("hold_audit")
         with db_cursor() as cur:
             cur.execute("""
                 INSERT INTO decisions
                     (decision_id, calculation_run_id, symbol, asset_class,
                      decision, confidence, entry_price, stop_loss, stop_loss_pct,
                      price_target, price_target_pct, position_size_pct,
-                     literature_winner, agent_consensus, created_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     literature_winner, agent_consensus, hold_audit, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (decision_id) DO NOTHING
             """, (
                 entry.get("decision_id"),
@@ -93,6 +113,7 @@ def log_decision(entry: dict):
                 entry.get("position_size_pct"),
                 entry.get("literature_winner"),
                 json.dumps(entry.get("agent_consensus", {}), default=str),
+                json.dumps(hold_audit, default=str) if hold_audit else None,
                 entry.get("timestamp", datetime.now().isoformat()),
             ))
     except Exception as e:

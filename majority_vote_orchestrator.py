@@ -28,6 +28,7 @@ from fundamentals_analyst import asset_class
 
 KILL_SWITCH_FILE = Path(__file__).parent / "KILL_SWITCH"
 OUTCOMES_LOG = Path(__file__).parent / "logs" / "decision_outcomes.jsonl"
+HOLD_DECISIONS_LOG = Path(__file__).parent / "logs" / "hold_decisions.jsonl"
 PLAYBOOK_DIR = Path(__file__).parent / "playbook"
 PLAYBOOK_FILE = PLAYBOOK_DIR / "daily_playbook.json"
 
@@ -183,6 +184,82 @@ def _write_playbook_entry(symbol: str, majority_direction: str, best_run: dict):
         print(f"⚠️  Playbook write failed: {e}")
 
 
+def _build_hold_audit(symbol: str, results: list, vote_counts: dict,
+                       directions: list) -> dict:
+    """Diagnose WHICH gate caused this HOLD. Priority order:
+      1. no_valid_runs   — every run errored
+      2. whipsaw         — _detect_whipsaw flagged direction instability
+      3. risk_gatekeeper — majority of completed runs had risk_status REJECTED
+      4. agent_disagreement — runs split across 2+ directions, no clear majority
+      5. majority_vote   — HOLD won the plurality outright
+    """
+    valid_runs = [r for r in results if r.get("status") == "ok"]
+    n_valid = len(valid_runs)
+    risk_statuses = []
+    for r in valid_runs:
+        consensus = r.get("agent_consensus") or {}
+        rs = consensus.get("risk_status", "UNKNOWN")
+        risk_statuses.append(rs)
+
+    # Whipsaw — same detector master_orchestrator uses for the LLM warning
+    whipsaw_active = False
+    try:
+        from master_orchestrator import _detect_whipsaw
+        whipsaw_active = bool(_detect_whipsaw(symbol))
+    except Exception:
+        pass
+
+    # Determine blocking_gate
+    if n_valid == 0:
+        blocking_gate = "no_valid_runs"
+    elif whipsaw_active:
+        blocking_gate = "whipsaw"
+    elif risk_statuses.count("REJECTED") > n_valid / 2:
+        blocking_gate = "risk_gatekeeper"
+    elif len(set(d for d in directions if d != "UNKNOWN")) > 1:
+        # Multiple distinct directions across runs and HOLD won → genuine disagreement
+        blocking_gate = "agent_disagreement"
+    else:
+        blocking_gate = "majority_vote"
+
+    # Sample thesis from the first valid HOLD run for context
+    hold_runs = [r for r in valid_runs if r.get("direction") == "HOLD"]
+    sample_thesis = None
+    if hold_runs:
+        sample_thesis = (hold_runs[0].get("key_thesis") or "")[:300]
+
+    return {
+        "vote_tally": dict(vote_counts),
+        "blocking_gate": blocking_gate,
+        "risk_statuses": risk_statuses,
+        "whipsaw_active": whipsaw_active,
+        "agent_disagreement": len(set(d for d in directions if d != "UNKNOWN")) > 1,
+        "n_valid_runs": n_valid,
+        "n_errored_runs": len(results) - n_valid,
+        "sample_thesis": sample_thesis,
+    }
+
+
+def _persist_hold_audit(symbol: str, decision_id: str, calc_run_id: str,
+                         hold_audit: dict, timestamp: str):
+    """Write hold_audit to dedicated logs/hold_decisions.jsonl. Postgres
+    persistence happens via log_decision (which now includes the hold_audit
+    column on the decisions row)."""
+    record = {
+        "timestamp": timestamp,
+        "decision_id": decision_id,
+        "calculation_run_id": calc_run_id,
+        "symbol": symbol,
+        "hold_audit": hold_audit,
+    }
+    try:
+        HOLD_DECISIONS_LOG.parent.mkdir(exist_ok=True)
+        with open(HOLD_DECISIONS_LOG, "a") as f:
+            f.write(json.dumps(record, default=str) + "\n")
+    except Exception as e:
+        logging.warning(f"Failed to write hold_decisions.jsonl: {e}")
+
+
 def extract_direction(final_decision: str) -> str:
     """Extract the directional action (LONG/SHORT/HOLD) from the decision string."""
     first_word = final_decision.strip().split()[0].upper()
@@ -322,6 +399,16 @@ def run_majority_vote(symbol: str, num_runs: int = 3, execute: bool = False):
         json.dump(log_entry, f, indent=2, default=str)
     print(f"\n💾 Full log saved to: {log_path}")
 
+    # ── HOLD audit (Priority 6) ──────────────────────────────────────────
+    # When the vote resolves to HOLD, capture which gate caused it. This data
+    # is essential for understanding the system's filtering behavior over time
+    # ("why did 90% of trades die at gate X?"). Empty dict for non-HOLD runs.
+    hold_audit_payload = None
+    if majority_direction == "HOLD":
+        hold_audit_payload = _build_hold_audit(symbol, results, vote_counts, directions)
+        print(f"\n🛑 HOLD AUDIT — blocking_gate: {hold_audit_payload['blocking_gate']}  "
+              f"vote_tally: {hold_audit_payload['vote_tally']}")
+
     # ── Outcome tracking record ──────────────────────────────────────────
     if best_run:
         consensus = best_run.get("agent_consensus") or {}
@@ -346,6 +433,7 @@ def run_majority_vote(symbol: str, num_runs: int = 3, execute: bool = False):
             "position_size_pct": 5.0,  # Base size — deterministic, not from LLM
             "literature_winner": consensus.get("literature_winner"),
             "agent_consensus": consensus,
+            "hold_audit": hold_audit_payload,  # populated only when direction == HOLD
             # Outcome fields — populated later by score_outcomes.py
             "price_1d": None,
             "price_5d": None,
@@ -374,6 +462,17 @@ def run_majority_vote(symbol: str, num_runs: int = 3, execute: bool = False):
                 print(f"📊 Outcome record logged (JSONL only): {outcome_record['decision_id']}")
             except Exception as e2:
                 print(f"⚠️  Failed to write outcome record: {e2}")
+
+        # Dedicated HOLD-audit JSONL (Priority 6) — written for analysis tools
+        # that just want the "why no trade" stream without the full decision body.
+        if hold_audit_payload is not None:
+            _persist_hold_audit(
+                symbol=symbol,
+                decision_id=outcome_record["decision_id"],
+                calc_run_id=outcome_record["calculation_run_id"],
+                hold_audit=hold_audit_payload,
+                timestamp=outcome_record["timestamp"],
+            )
 
     # ── Playbook for intraday system ────────────────────────────────────
     if best_run:
