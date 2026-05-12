@@ -177,6 +177,83 @@ def _check_exposure_cap(manager, route: dict, equity: float) -> dict:
     }
 
 
+def _check_direct_exposure_cap(manager, symbol: str, signal_direction: str,
+                                sized_pct: float, equity: float) -> dict:
+    """Pre-trade exposure cap for DIRECT entries (LONG/SHORT on a primary instrument).
+
+    The W4 cap (_check_exposure_cap) was bolted onto the routing path. This wrapper
+    extends the same cap to direct entries so persistent same-direction signals
+    can't compound a single symbol past the cap. Constructs a synthetic 'route'-shaped
+    dict where `leverage` carries the signed economic direction
+    (signal_sign × symbol_leverage), then delegates to the shared cap calculator.
+
+    Example:
+      direct UNG LONG: signal=+1, symbol_leverage=+1 → effective_leverage=+1 → bullish
+      direct UNG SHORT: signal=-1, symbol_leverage=+1 → effective_leverage=-1 → bearish
+      direct KOLD LONG: signal=+1, symbol_leverage=-2 → effective_leverage=-2 → bearish on natgas
+    """
+    meta = _symbol_metadata(symbol)
+    if not meta:
+        return {"action": "allowed", "reason": "no_symbol_metadata"}
+    signal_sign = 1 if signal_direction.upper().startswith("LONG") else -1
+    effective_leverage = meta["leverage"] * signal_sign
+    fake_route = {
+        "executed_symbol": symbol,
+        "leverage": effective_leverage,
+        "asset_class": meta["asset_class"],
+        "sized_pct": sized_pct,
+    }
+    return _check_exposure_cap(manager, fake_route, equity)
+
+
+def _flatten_routed_proxies(manager, original_symbol: str, new_signal_direction: str) -> list:
+    """When a direct entry signal fires for `original_symbol`, identify any
+    currently-open proxy positions that were placed as the BEARISH PROXY ROUTE
+    for `original_symbol`, and flatten them if their economic direction OPPOSES
+    the new signal.
+
+    Background: when the system first routed a UNG SHORT signal (UNG not
+    shortable that day) to KOLD LONG via bearish_proxies.yaml, it opened a -2x
+    bearish-natgas position. If UNG later flips direction to LONG, the KOLD
+    position is a stale hedge that contradicts the new thesis. The existing
+    flatten_position only flattens the ORIGINAL symbol — not its routed proxies.
+    This helper closes that gap.
+
+    Returns list of (proxy_symbol, qty) tuples that were flattened.
+    """
+    proxies = _load_bearish_proxies().get(original_symbol)
+    if not proxies:
+        return []
+    # bearish_proxies.yaml maps original → {proxy, leverage, ...}
+    proxy_symbol = proxies.get("proxy")
+    proxy_leverage = int(proxies.get("leverage", 1))
+    if not proxy_symbol:
+        return []
+    try:
+        positions = manager.get_current_positions()
+    except Exception:
+        return []
+    proxy_qty = positions.get(proxy_symbol, 0)
+    if not proxy_qty:
+        return []
+
+    # Economic direction of the existing proxy position toward the underlying:
+    #   signum(qty × leverage). For KOLD LONG (+qty, -2 lev) → product < 0 → bearish.
+    proxy_econ_dir = -1 if (proxy_qty * proxy_leverage) < 0 else 1
+    # New signal's economic direction toward the same underlying:
+    new_dir = 1 if new_signal_direction.upper().startswith("LONG") else -1
+    if proxy_econ_dir == new_dir:
+        return []  # Same direction — proxy is congruent with new signal, don't touch
+
+    # Opposite — flatten the proxy as a stale hedge
+    print(f"  [PROXY-FLATTEN] {proxy_symbol} (opened as {original_symbol} bearish route) "
+          f"opposes new {original_symbol} {new_signal_direction} signal — flattening")
+    ok = manager.flatten_position(proxy_symbol,
+                                  reason=f"stale {original_symbol}-routed proxy; "
+                                         f"new {new_signal_direction} signal reverses thesis")
+    return [(proxy_symbol, proxy_qty)] if ok else []
+
+
 def _load_bearish_proxies() -> Dict[str, dict]:
     """Lazy-load + cache config/bearish_proxies.yaml. Empty dict on failure."""
     global _bearish_proxies_cache
@@ -654,6 +731,16 @@ def execute_master_decision(decision: MasterTradingDecision) -> Dict:
     # Handle different decision types
     execution_result = {}
 
+    # Stale-routed-proxy cleanup: if a prior routed SHORT trade left a bearish
+    # proxy position (e.g., KOLD LONG from a UNG-non-shortable day) and today's
+    # signal direction is opposite, flatten the stale proxy. Runs before the
+    # direct flatten check below so the broker state is clean before sizing.
+    if decision.final_decision.upper().startswith(("LONG", "SHORT")):
+        try:
+            _flatten_routed_proxies(manager, symbol, decision.final_decision)
+        except Exception as e:
+            logging.warning(f"_flatten_routed_proxies failed for {symbol}: {e}")
+
     # Bug 4 fix: Flatten opposite position before entering new direction
     if decision.final_decision.upper().startswith("LONG"):
         positions = manager.get_current_positions()
@@ -665,6 +752,24 @@ def execute_master_decision(decision: MasterTradingDecision) -> Dict:
             manager.flatten_position(symbol, "reversing LONG → SHORT")
 
     if decision.final_decision.upper().startswith("LONG") and position_pct > 0:
+        # Direct-entry exposure cap: prevents persistent same-direction signals
+        # from compounding a single symbol past the asset-class cap. Same cap
+        # math as W4 routing — extends to non-routed primary instruments.
+        equity = manager.get_portfolio_value()
+        direct_cap = _check_direct_exposure_cap(manager, symbol, "LONG", position_pct, equity)
+        if direct_cap.get("action") == "skipped":
+            cap = direct_cap.get("cap_pct")
+            ac = direct_cap.get("asset_class")
+            combined = direct_cap.get("combined_pct")
+            print(f"[CAP] {symbol} {ac} exposure would exceed {cap}% "
+                  f"(combined {combined}%) — skipping LONG entry")
+            return {
+                "success": False, "skipped": True, "reason": "exposure_cap_exceeded",
+                "symbol": symbol, "exposure_check": direct_cap,
+                "current_price": current_price, "spread_bps": spread_bps,
+                "portfolio_value": equity, "timestamp": datetime.now().isoformat(),
+            }
+
         shares = manager.calculate_share_quantity(symbol, position_pct, current_price)
         print(f"Buying {shares} shares...")
 
@@ -806,6 +911,22 @@ def execute_master_decision(decision: MasterTradingDecision) -> Dict:
             _persist_route_event(route, calculation_run_id=calc_run_id, trade_result=trade_result)
             # Fall through to attach metadata at end of function
         else:
+            # Direct-entry exposure cap on shortable symbols too
+            equity = manager.get_portfolio_value()
+            direct_cap = _check_direct_exposure_cap(manager, symbol, "SHORT", position_pct, equity)
+            if direct_cap.get("action") == "skipped":
+                cap = direct_cap.get("cap_pct")
+                ac = direct_cap.get("asset_class")
+                combined = direct_cap.get("combined_pct")
+                print(f"[CAP] {symbol} {ac} exposure would exceed {cap}% "
+                      f"(combined {combined}%) — skipping SHORT entry")
+                return {
+                    "success": False, "skipped": True, "reason": "exposure_cap_exceeded",
+                    "symbol": symbol, "exposure_check": direct_cap,
+                    "current_price": current_price, "spread_bps": spread_bps,
+                    "portfolio_value": equity, "timestamp": datetime.now().isoformat(),
+                }
+
             shares = manager.calculate_share_quantity(symbol, position_pct, current_price)
             print(f"Shorting {shares} shares...")
 
