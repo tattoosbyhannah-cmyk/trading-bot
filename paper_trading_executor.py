@@ -206,11 +206,31 @@ def _check_direct_exposure_cap(manager, symbol: str, signal_direction: str,
     return _check_exposure_cap(manager, fake_route, equity)
 
 
+def _most_recent_non_hold_direction(symbol: str, lookback_days: int = 7) -> Optional[str]:
+    """Walk back through recent decisions for `symbol` (newest→oldest) and return
+    the most recent non-HOLD direction as 'LONG' or 'SHORT'. Used by HOLD-day
+    proxy-staleness cleanup so a single HOLD doesn't strand a stale proxy hedge.
+    Returns None if no LONG/SHORT decision exists in the lookback window.
+    """
+    try:
+        from db.queries import load_recent_decisions
+        recent = load_recent_decisions(symbol, days=lookback_days)
+    except Exception:
+        return None
+    if not recent:
+        return None
+    for d in reversed(recent):
+        direction = (d.get("decision") or "").upper()
+        if direction in ("LONG", "SHORT"):
+            return direction
+    return None
+
+
 def _flatten_routed_proxies(manager, original_symbol: str, new_signal_direction: str) -> list:
-    """When a direct entry signal fires for `original_symbol`, identify any
-    currently-open proxy positions that were placed as the BEARISH PROXY ROUTE
-    for `original_symbol`, and flatten them if their economic direction OPPOSES
-    the new signal.
+    """When a signal fires for `original_symbol`, identify any currently-open
+    proxy positions that were placed as the BEARISH PROXY ROUTE for
+    `original_symbol`, and flatten them if their economic direction OPPOSES
+    the effective signal direction.
 
     Background: when the system first routed a UNG SHORT signal (UNG not
     shortable that day) to KOLD LONG via bearish_proxies.yaml, it opened a -2x
@@ -219,12 +239,17 @@ def _flatten_routed_proxies(manager, original_symbol: str, new_signal_direction:
     flatten_position only flattens the ORIGINAL symbol — not its routed proxies.
     This helper closes that gap.
 
+    HOLD handling: when `new_signal_direction == 'HOLD'`, walk back through the
+    symbol's recent decision history to find the most recent LONG/SHORT and
+    treat THAT as the effective direction. A single HOLD day shouldn't strand a
+    proxy that's stale relative to the standing thesis. If no recent non-HOLD
+    exists, the proxy stays (no thesis to compare against).
+
     Returns list of (proxy_symbol, qty) tuples that were flattened.
     """
     proxies = _load_bearish_proxies().get(original_symbol)
     if not proxies:
         return []
-    # bearish_proxies.yaml maps original → {proxy, leverage, ...}
     proxy_symbol = proxies.get("proxy")
     proxy_leverage = int(proxies.get("leverage", 1))
     if not proxy_symbol:
@@ -237,20 +262,30 @@ def _flatten_routed_proxies(manager, original_symbol: str, new_signal_direction:
     if not proxy_qty:
         return []
 
+    # Resolve effective direction: signal's own direction if LONG/SHORT, else
+    # the most recent non-HOLD direction in the symbol's history.
+    effective_direction = new_signal_direction.upper()
+    if not effective_direction.startswith(("LONG", "SHORT")):
+        effective_direction = _most_recent_non_hold_direction(original_symbol)
+        if not effective_direction:
+            return []  # No standing thesis — leave proxy alone
+        print(f"  [PROXY-CHECK] {original_symbol} HOLD today; checking proxy {proxy_symbol} "
+              f"against most-recent non-HOLD direction: {effective_direction}")
+
     # Economic direction of the existing proxy position toward the underlying:
     #   signum(qty × leverage). For KOLD LONG (+qty, -2 lev) → product < 0 → bearish.
     proxy_econ_dir = -1 if (proxy_qty * proxy_leverage) < 0 else 1
-    # New signal's economic direction toward the same underlying:
-    new_dir = 1 if new_signal_direction.upper().startswith("LONG") else -1
+    # Effective signal's economic direction toward the same underlying:
+    new_dir = 1 if effective_direction.startswith("LONG") else -1
     if proxy_econ_dir == new_dir:
-        return []  # Same direction — proxy is congruent with new signal, don't touch
+        return []  # Same direction — proxy is congruent with effective thesis, don't touch
 
     # Opposite — flatten the proxy as a stale hedge
     print(f"  [PROXY-FLATTEN] {proxy_symbol} (opened as {original_symbol} bearish route) "
-          f"opposes new {original_symbol} {new_signal_direction} signal — flattening")
+          f"opposes effective {original_symbol} {effective_direction} thesis — flattening")
     ok = manager.flatten_position(proxy_symbol,
                                   reason=f"stale {original_symbol}-routed proxy; "
-                                         f"new {new_signal_direction} signal reverses thesis")
+                                         f"effective {effective_direction} thesis reverses it")
     return [(proxy_symbol, proxy_qty)] if ok else []
 
 
@@ -659,6 +694,18 @@ class PaperTradingManager:
             return False
 
     def set_stop_loss(self, symbol: str, stop_price: float) -> Optional[str]:
+        """Submit a STOP_LIMIT order (not plain STOP) to bound the fill price.
+
+        Pre-market liquidity is thin enough that a plain STOP MARKET can fill
+        well below the trigger. STOP_LIMIT caps the fill at `limit_price`,
+        which sits `stop_limit_offset_pct` (default 0.5%) below the trigger
+        for SELL stops (closing LONG) and above for BUY stops (closing SHORT).
+
+        Trade-off: in a true gap-down through the limit, the order may fail to
+        fill, leaving the position open. For liquid commodity ETFs this is
+        rare; tune `stop_limit_offset_pct` in config/risk_limits.yaml if the
+        won't-fill cases become a problem.
+        """
         check_kill_switch()
         try:
             positions = self.get_current_positions()
@@ -672,13 +719,25 @@ class PaperTradingManager:
             qty = abs(positions[symbol])
             side = OrderSide.SELL if positions[symbol] > 0 else OrderSide.BUY
 
+            # Compute the limit price. For SELL stop (closing LONG): limit just below
+            # trigger so we accept slightly-worse-than-trigger but not arbitrarily worse.
+            # For BUY stop (closing SHORT): limit just above trigger by the same logic.
+            offset_pct = float(_load_risk_limits().get("stop_limit_offset_pct", 0.5))
+            if side == OrderSide.SELL:
+                limit_price = round(stop_price * (1 - offset_pct / 100), 2)
+            else:
+                limit_price = round(stop_price * (1 + offset_pct / 100), 2)
+
             order = OrderRequest(
                 symbol=symbol, qty=qty, side=side,
-                order_type=OrderType.STOP, stop_price=stop_price,
+                order_type=OrderType.STOP_LIMIT,
+                stop_price=stop_price,
+                limit_price=limit_price,
                 time_in_force="gtc",
             )
             result = self.broker.submit_order(order)
-            print(f"✅ Stop loss set for {symbol} at ${stop_price:.2f}")
+            print(f"✅ Stop loss set for {symbol} at ${stop_price:.2f} "
+                  f"(STOP_LIMIT, limit=${limit_price:.2f}, offset={offset_pct}%)")
             return result.order_id
         except Exception as e:
             print(f"Error setting stop loss: {e}")
@@ -732,14 +791,17 @@ def execute_master_decision(decision: MasterTradingDecision) -> Dict:
     execution_result = {}
 
     # Stale-routed-proxy cleanup: if a prior routed SHORT trade left a bearish
-    # proxy position (e.g., KOLD LONG from a UNG-non-shortable day) and today's
-    # signal direction is opposite, flatten the stale proxy. Runs before the
+    # proxy position (e.g., KOLD LONG from a UNG-non-shortable day) and the
+    # effective direction is opposite, flatten the stale proxy. Runs before the
     # direct flatten check below so the broker state is clean before sizing.
-    if decision.final_decision.upper().startswith(("LONG", "SHORT")):
-        try:
-            _flatten_routed_proxies(manager, symbol, decision.final_decision)
-        except Exception as e:
-            logging.warning(f"_flatten_routed_proxies failed for {symbol}: {e}")
+    #
+    # Runs on LONG / SHORT (effective direction = today's signal) AND on HOLD
+    # (effective direction = most recent non-HOLD from history). A single HOLD
+    # shouldn't strand a proxy that opposes the standing thesis.
+    try:
+        _flatten_routed_proxies(manager, symbol, decision.final_decision)
+    except Exception as e:
+        logging.warning(f"_flatten_routed_proxies failed for {symbol}: {e}")
 
     # Bug 4 fix: Flatten opposite position before entering new direction
     if decision.final_decision.upper().startswith("LONG"):

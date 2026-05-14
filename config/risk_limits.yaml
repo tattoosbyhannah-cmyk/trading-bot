@@ -11,3 +11,13 @@
 #   further concentration. Adjust after 30+ scored outcomes show real concentration risk.
 
 exposure_cap_pct: 7.5
+
+# stop_limit_offset_pct: when set_stop_loss submits a STOP order to Alpaca,
+# we use STOP_LIMIT (not plain STOP) to avoid bad fills in thin pre-market
+# liquidity. The limit price sits `stop_limit_offset_pct` below the trigger for
+# SELL stops (closing LONG positions) and above for BUY stops (closing SHORT).
+# Trade-off: STOP_LIMIT won't fill at a worse-than-limit price, but in a true
+# gap-down the limit can fail to fill at all, leaving the position open.
+# 0.5% is reasonable for liquid commodity ETFs; tighten for cleaner exits at
+# the cost of more "stop triggered but didn't fill" cases.
+stop_limit_offset_pct: 0.5

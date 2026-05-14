@@ -19,6 +19,7 @@ from alpaca.trading.requests import (
     MarketOrderRequest as AlpacaMarketOrder,
     LimitOrderRequest as AlpacaLimitOrder,
     StopOrderRequest as AlpacaStopOrder,
+    StopLimitOrderRequest as AlpacaStopLimitOrder,
     ReplaceOrderRequest,
 )
 from alpaca.trading.enums import (
@@ -136,6 +137,13 @@ class AlpacaBroker(BaseBroker):
                 symbol=order.symbol, qty=order.qty,
                 side=side, time_in_force=tif,
                 stop_price=order.stop_price,
+            )
+        elif order.order_type == OrderType.STOP_LIMIT:
+            req = AlpacaStopLimitOrder(
+                symbol=order.symbol, qty=order.qty,
+                side=side, time_in_force=tif,
+                stop_price=order.stop_price,
+                limit_price=order.limit_price,
             )
         else:
             raise ValueError(f"Order type {order.order_type} not implemented")
