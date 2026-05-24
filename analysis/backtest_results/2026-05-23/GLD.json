@@ -1,0 +1,320 @@
+{
+  "symbol": "GLD",
+  "asset_class": "gold",
+  "days": 10,
+  "n_bars": 6597,
+  "date_range": {
+    "start": "2026-05-11",
+    "end": "2026-05-22"
+  },
+  "generated_at": "2026-05-23T19:30:28",
+  "horizon_bars": 15,
+  "by_direction": {
+    "LONG": {
+      "n_signals": 7,
+      "wins": 0,
+      "win_rate_pct": 0.0,
+      "avg_strength": 0.4434,
+      "avg_directional_return_pct": -0.1719,
+      "signals": [
+        {
+          "timestamp": "2026-05-15T10:12:00+00:00",
+          "direction": "LONG",
+          "strength": 0.414,
+          "entry_price": 418.78,
+          "future_close": 418.07,
+          "return_pct": -0.1695,
+          "win": false,
+          "reason": "momentum (+0.13) + volume (+1.00) + mean reversion (+0.97)",
+          "components": {
+            "vwap": -0.0682,
+            "momentum": 0.1346,
+            "volume": 1.0,
+            "mean_reversion": 0.9722
+          }
+        },
+        {
+          "timestamp": "2026-05-15T21:03:00+00:00",
+          "direction": "LONG",
+          "strength": 0.405,
+          "entry_price": 417.05,
+          "future_close": 417.0,
+          "return_pct": -0.012,
+          "win": false,
+          "reason": "volume (+1.00) + mean reversion (+1.00)",
+          "components": {
+            "vwap": -0.06,
+            "momentum": 0.0751,
+            "volume": 1.0,
+            "mean_reversion": 1.0
+          }
+        },
+        {
+          "timestamp": "2026-05-18T11:41:00+00:00",
+          "direction": "LONG",
+          "strength": 0.417,
+          "entry_price": 419.12,
+          "future_close": 418.1,
+          "return_pct": -0.2434,
+          "win": false,
+          "reason": "vwap (+0.30) + momentum (+0.43) + volume (+1.00)",
+          "components": {
+            "vwap": 0.2969,
+            "momentum": 0.4276,
+            "volume": 1.0,
+            "mean_reversion": 0.0
+          }
+        },
+        {
+          "timestamp": "2026-05-20T15:15:00+00:00",
+          "direction": "LONG",
+          "strength": 0.482,
+          "entry_price": 417.24,
+          "future_close": 415.99,
+          "return_pct": -0.2996,
+          "win": false,
+          "reason": "vwap (+0.67) + momentum (+0.27) + volume (+1.00)",
+          "components": {
+            "vwap": 0.6709,
+            "momentum": 0.2694,
+            "volume": 1.0,
+            "mean_reversion": 0.0
+          }
+        },
+        {
+          "timestamp": "2026-05-20T15:16:00+00:00",
+          "direction": "LONG",
+          "strength": 0.568,
+          "entry_price": 417.82,
+          "future_close": 416.0301,
+          "return_pct": -0.4284,
+          "win": false,
+          "reason": "vwap (+0.73) + momentum (+0.50) + volume (+1.00)",
+          "components": {
+            "vwap": 0.7312,
+            "momentum": 0.4968,
+            "volume": 1.0,
+            "mean_reversion": 0.0
+          }
+        },
+        {
+          "timestamp": "2026-05-22T11:39:00+00:00",
+          "direction": "LONG",
+          "strength": 0.411,
+          "entry_price": 414.91,
+          "future_close": 414.83,
+          "return_pct": -0.0193,
+          "win": false,
+          "reason": "volume (+1.00) + mean reversion (+1.00)",
+          "components": {
+            "vwap": -0.0451,
+            "momentum": 0.082,
+            "volume": 1.0,
+            "mean_reversion": 1.0
+          }
+        },
+        {
+          "timestamp": "2026-05-22T19:36:00+00:00",
+          "direction": "LONG",
+          "strength": 0.407,
+          "entry_price": 413.96,
+          "future_close": 413.83,
+          "return_pct": -0.0314,
+          "win": false,
+          "reason": "volume (+1.00) + mean reversion (+1.00)",
+          "components": {
+            "vwap": -0.0567,
+            "momentum": 0.08,
+            "volume": 1.0,
+            "mean_reversion": 1.0
+          }
+        }
+      ]
+    },
+    "SHORT": {
+      "n_signals": 11,
+      "wins": 7,
+      "win_rate_pct": 63.64,
+      "avg_strength": 0.4647,
+      "avg_directional_return_pct": -0.0203,
+      "signals": [
+        {
+          "timestamp": "2026-05-11T20:49:00+00:00",
+          "direction": "SHORT",
+          "strength": 0.401,
+          "entry_price": 434.84,
+          "future_close": 434.66,
+          "return_pct": 0.0414,
+          "win": true,
+          "reason": "volume (-1.00) + mean reversion (-1.00)",
+          "components": {
+            "vwap": 0.0287,
+            "momentum": -0.0319,
+            "volume": -1.0,
+            "mean_reversion": -1.0
+          }
+        },
+        {
+          "timestamp": "2026-05-12T08:00:00+00:00",
+          "direction": "SHORT",
+          "strength": 0.443,
+          "entry_price": 431.8,
+          "future_close": 431.4,
+          "return_pct": 0.0926,
+          "win": true,
+          "reason": "momentum (-0.79) + volume (-1.00)",
+          "components": {
+            "vwap": -0.0253,
+            "momentum": -0.7861,
+            "volume": -1.0,
+            "mean_reversion": 0.0
+          }
+        },
+        {
+          "timestamp": "2026-05-12T08:01:00+00:00",
+          "direction": "SHORT",
+          "strength": 0.524,
+          "entry_price": 431.5,
+          "future_close": 431.4,
+          "return_pct": 0.0232,
+          "win": true,
+          "reason": "momentum (-1.00) + volume (-1.00)",
+          "components": {
+            "vwap": -0.0814,
+            "momentum": -1.0,
+            "volume": -1.0,
+            "mean_reversion": 0.0
+          }
+        },
+        {
+          "timestamp": "2026-05-12T15:22:00+00:00",
+          "direction": "SHORT",
+          "strength": 0.41,
+          "entry_price": 426.67,
+          "future_close": 428.21,
+          "return_pct": -0.3609,
+          "win": false,
+          "reason": "vwap (-0.53) + momentum (-0.24) + volume (-0.89)",
+          "components": {
+            "vwap": -0.5286,
+            "momentum": -0.2439,
+            "volume": -0.8892,
+            "mean_reversion": 0.0
+          }
+        },
+        {
+          "timestamp": "2026-05-12T15:23:00+00:00",
+          "direction": "SHORT",
+          "strength": 0.483,
+          "entry_price": 426.2,
+          "future_close": 428.42,
+          "return_pct": -0.5209,
+          "win": false,
+          "reason": "vwap (-0.59) + momentum (-0.36) + volume (-1.00)",
+          "components": {
+            "vwap": -0.5856,
+            "momentum": -0.3579,
+            "volume": -1.0,
+            "mean_reversion": 0.0
+          }
+        },
+        {
+          "timestamp": "2026-05-15T08:00:00+00:00",
+          "direction": "SHORT",
+          "strength": 0.561,
+          "entry_price": 419.75,
+          "future_close": 419.03,
+          "return_pct": 0.1715,
+          "win": true,
+          "reason": "vwap (-0.20) + momentum (-1.00) + volume (-1.00)",
+          "components": {
+            "vwap": -0.2042,
+            "momentum": -1.0,
+            "volume": -1.0,
+            "mean_reversion": 0.0
+          }
+        },
+        {
+          "timestamp": "2026-05-15T08:01:00+00:00",
+          "direction": "SHORT",
+          "strength": 0.553,
+          "entry_price": 419.06,
+          "future_close": 418.66,
+          "return_pct": 0.0955,
+          "win": true,
+          "reason": "vwap (-0.18) + momentum (-1.00) + volume (-1.00)",
+          "components": {
+            "vwap": -0.1774,
+            "momentum": -1.0,
+            "volume": -1.0,
+            "mean_reversion": 0.0
+          }
+        },
+        {
+          "timestamp": "2026-05-19T08:00:00+00:00",
+          "direction": "SHORT",
+          "strength": 0.418,
+          "entry_price": 417.48,
+          "future_close": 416.7,
+          "return_pct": 0.1868,
+          "win": true,
+          "reason": "momentum (-0.47) + volume (-1.00) + mean reversion (-0.54)",
+          "components": {
+            "vwap": 0.0961,
+            "momentum": -0.4651,
+            "volume": -1.0,
+            "mean_reversion": -0.5386
+          }
+        },
+        {
+          "timestamp": "2026-05-19T13:29:00+00:00",
+          "direction": "SHORT",
+          "strength": 0.411,
+          "entry_price": 412.36,
+          "future_close": 410.93,
+          "return_pct": 0.3468,
+          "win": true,
+          "reason": "vwap (-0.50) + momentum (-0.20) + volume (-1.00)",
+          "components": {
+            "vwap": -0.4975,
+            "momentum": -0.205,
+            "volume": -1.0,
+            "mean_reversion": 0.0
+          }
+        },
+        {
+          "timestamp": "2026-05-19T13:31:00+00:00",
+          "direction": "SHORT",
+          "strength": 0.497,
+          "entry_price": 410.4,
+          "future_close": 411.08,
+          "return_pct": -0.1657,
+          "win": false,
+          "reason": "vwap (-0.47) + momentum (-0.52) + volume (-1.00)",
+          "components": {
+            "vwap": -0.4741,
+            "momentum": -0.5153,
+            "volume": -1.0,
+            "mean_reversion": 0.0
+          }
+        },
+        {
+          "timestamp": "2026-05-20T08:00:00+00:00",
+          "direction": "SHORT",
+          "strength": 0.411,
+          "entry_price": 411.51,
+          "future_close": 412.06,
+          "return_pct": -0.1337,
+          "win": false,
+          "reason": "vwap (+0.14) + momentum (-0.18) + volume (-1.00) + mean reversion (-1.00)",
+          "components": {
+            "vwap": 0.1382,
+            "momentum": -0.1753,
+            "volume": -1.0,
+            "mean_reversion": -1.0
+          }
+        }
+      ]
+    }
+  }
+}

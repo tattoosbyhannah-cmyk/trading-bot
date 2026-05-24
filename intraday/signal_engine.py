@@ -314,15 +314,19 @@ def _fetch_historical_bars(symbol: str, days: int = 5) -> pd.DataFrame:
     return pd.DataFrame(records)
 
 
-def _run_backtest(symbol: str, days: int = 5):
-    """Simulate the signal engine over historical 1-min bars."""
+def _run_backtest(symbol: str, days: int = 5, output_path: Optional[str] = None):
+    """Simulate the signal engine over historical 1-min bars.
+
+    When output_path is provided, writes a structured JSON capturing every
+    signal, win/loss outcome (15-bar forward check), and aggregate stats.
+    Stdout retains the human-readable summary regardless."""
     _log(f"=== BACKTEST: {symbol} ({days} days of 1-min bars) ===\n")
     _log("Fetching historical bars...")
 
     all_bars = _fetch_historical_bars(symbol, days)
     if all_bars.empty:
         _log("No bars fetched.")
-        return
+        return None
 
     _log(f"Fetched {len(all_bars)} bars "
           f"({all_bars['timestamp'].iloc[0][:10]} to {all_bars['timestamp'].iloc[-1][:10]})\n")
@@ -331,6 +335,21 @@ def _run_backtest(symbol: str, days: int = 5):
     sys.path.insert(0, str(TRADING_BOT_DIR))
     from fundamentals_analyst import asset_class as get_ac
     sym_ac = get_ac(symbol)
+
+    result = {
+        "symbol": symbol,
+        "asset_class": sym_ac,
+        "days": days,
+        "n_bars": int(len(all_bars)),
+        "date_range": {
+            "start": str(all_bars["timestamp"].iloc[0])[:10],
+            "end": str(all_bars["timestamp"].iloc[-1])[:10],
+        },
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "horizon_bars": 15,
+        "by_direction": {},
+    }
+
     for test_dir in ("LONG", "SHORT"):
         playbook = {
             symbol: {
@@ -387,14 +406,36 @@ def _run_backtest(symbol: str, days: int = 5):
         # Report
         _log(f"── Playbook direction: {test_dir} ──")
         _log(f"  Signals generated: {len(signals)}")
+        dir_record = {"n_signals": len(signals)}
         if signals:
             wins = sum(1 for s in signals if s["win"])
             win_rate = wins / len(signals) * 100
-            avg_strength = np.mean([s["signal"].strength for s in signals])
-            avg_return = np.mean([s["return_pct"] for s in signals])
+            avg_strength = float(np.mean([s["signal"].strength for s in signals]))
+            avg_return = float(np.mean([s["return_pct"] for s in signals]))
             _log(f"  Win rate (15-bar): {wins}/{len(signals)} = {win_rate:.1f}%")
             _log(f"  Avg signal strength: {avg_strength:.3f}")
             _log(f"  Avg directional return: {avg_return:+.3f}%")
+
+            dir_record.update({
+                "wins": int(wins),
+                "win_rate_pct": round(win_rate, 2),
+                "avg_strength": round(avg_strength, 4),
+                "avg_directional_return_pct": round(avg_return, 4),
+                "signals": [
+                    {
+                        "timestamp": s["signal"].timestamp,
+                        "direction": s["signal"].direction,
+                        "strength": round(float(s["signal"].strength), 4),
+                        "entry_price": round(float(s["signal"].entry_price), 4),
+                        "future_close": round(float(s["future_close"]), 4),
+                        "return_pct": round(float(s["return_pct"]), 4),
+                        "win": bool(s["win"]),
+                        "reason": s["signal"].reason,
+                        "components": s["signal"].components,
+                    }
+                    for s in signals
+                ],
+            })
 
             # Show first 5 signals
             _log(f"\n  Sample signals:")
@@ -405,7 +446,18 @@ def _run_backtest(symbol: str, days: int = 5):
                       f"str={sig.strength:.2f} @ ${sig.entry_price:.2f} "
                       f"→ ${s['future_close']:.2f} ({s['return_pct']:+.2f}%) "
                       f"[{outcome}] | {sig.reason}")
+        result["by_direction"][test_dir] = dir_record
         _log()
+
+    if output_path:
+        from pathlib import Path as _Path
+        out = _Path(output_path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        with open(out, "w") as f:
+            json.dump(result, f, indent=2, default=str)
+        _log(f"💾 Backtest JSON written to: {out}")
+
+    return result
 
 
 if __name__ == "__main__":
@@ -417,11 +469,17 @@ if __name__ == "__main__":
             didx = sys.argv.index("--days")
             if didx + 1 < len(sys.argv):
                 days = int(sys.argv[didx + 1])
-        _run_backtest(symbol, days)
+        output_path = None
+        if "--output" in sys.argv:
+            oidx = sys.argv.index("--output")
+            if oidx + 1 < len(sys.argv):
+                output_path = sys.argv[oidx + 1]
+        _run_backtest(symbol, days, output_path=output_path)
     else:
         _log("Usage:")
         _log("  python intraday/signal_engine.py --backtest USO")
         _log("  python intraday/signal_engine.py --backtest USO --days 10")
+        _log("  python intraday/signal_engine.py --backtest USO --days 10 --output path.json")
         _log("\nFor live mode, import and register with stream_bars:")
         _log("  from intraday.signal_engine import SignalEngine")
         _log("  engine = SignalEngine(playbook)")

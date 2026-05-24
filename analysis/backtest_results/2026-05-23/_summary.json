@@ -1,0 +1,78 @@
+{
+  "generated_at": "2026-05-23T19:30:26",
+  "days": 10,
+  "symbols": [
+    "GLD",
+    "UNG",
+    "USO"
+  ],
+  "horizon_bars": 15,
+  "results": {
+    "GLD": {
+      "status": "ok",
+      "n_bars": 6597,
+      "date_range": {
+        "start": "2026-05-11",
+        "end": "2026-05-22"
+      },
+      "by_direction": {
+        "LONG": {
+          "n_signals": 7,
+          "wins": 0,
+          "win_rate_pct": 0.0,
+          "avg_directional_return_pct": -0.1719
+        },
+        "SHORT": {
+          "n_signals": 11,
+          "wins": 7,
+          "win_rate_pct": 63.64,
+          "avg_directional_return_pct": -0.0203
+        }
+      }
+    },
+    "UNG": {
+      "status": "ok",
+      "n_bars": 5221,
+      "date_range": {
+        "start": "2026-05-11",
+        "end": "2026-05-22"
+      },
+      "by_direction": {
+        "LONG": {
+          "n_signals": 74,
+          "wins": 35,
+          "win_rate_pct": 47.3,
+          "avg_directional_return_pct": 0.0548
+        },
+        "SHORT": {
+          "n_signals": 92,
+          "wins": 38,
+          "win_rate_pct": 41.3,
+          "avg_directional_return_pct": -0.0697
+        }
+      }
+    },
+    "USO": {
+      "status": "ok",
+      "n_bars": 6976,
+      "date_range": {
+        "start": "2026-05-11",
+        "end": "2026-05-22"
+      },
+      "by_direction": {
+        "LONG": {
+          "n_signals": 103,
+          "wins": 53,
+          "win_rate_pct": 51.46,
+          "avg_directional_return_pct": 0.0317
+        },
+        "SHORT": {
+          "n_signals": 146,
+          "wins": 57,
+          "win_rate_pct": 39.04,
+          "avg_directional_return_pct": -0.0924
+        }
+      }
+    }
+  }
+}
