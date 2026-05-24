@@ -35,10 +35,27 @@ def _fetch_rows(sql: str, params: tuple = ()) -> list:
 
 # ── 1. Recent decisions for a symbol ─────────────────────────────────────────
 
-def load_recent_decisions(symbol: str, days: int = 3) -> list:
-    """Load recent decisions. SQL first, JSONL fallback."""
+def load_recent_decisions(symbol: str, days: int = 3, as_of_date: str = None) -> list:
+    """Load recent decisions. SQL first, JSONL fallback.
+
+    When as_of_date is provided (ISO 'YYYY-MM-DD'), the window is
+    [as_of - days, as_of] — used in backtest to avoid leaking future decisions
+    into context for the day being simulated.
+    """
+    # Anchor the window: backtest uses as_of_date end-of-day; live uses now()
+    if as_of_date:
+        try:
+            anchor = datetime.fromisoformat(as_of_date).replace(
+                hour=23, minute=59, second=59, tzinfo=timezone.utc
+            )
+        except Exception:
+            anchor = datetime.now(timezone.utc)
+    else:
+        anchor = datetime.now(timezone.utc)
+
     try:
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        lo = (anchor - timedelta(days=days)).isoformat()
+        hi = anchor.isoformat()
         rows = _fetch_rows("""
             SELECT decision_id, calculation_run_id, symbol, decision,
                    confidence, entry_price, stop_loss, stop_loss_pct,
@@ -46,9 +63,9 @@ def load_recent_decisions(symbol: str, days: int = 3) -> list:
                    literature_winner, hit_stop, hit_target,
                    return_1d_pct, created_at
             FROM decisions
-            WHERE symbol = %s AND created_at >= %s
+            WHERE symbol = %s AND created_at >= %s AND created_at <= %s
             ORDER BY created_at
-        """, (symbol, cutoff))
+        """, (symbol, lo, hi))
         if rows:
             return rows
     except Exception:
@@ -58,14 +75,16 @@ def load_recent_decisions(symbol: str, days: int = 3) -> list:
     path = LOGS / "decision_outcomes.jsonl"
     if not path.exists():
         return []
-    cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+    lo_str = (anchor - timedelta(days=days)).isoformat()
+    hi_str = anchor.isoformat()
     results = []
     try:
         for line in path.read_text().strip().split("\n"):
             if not line:
                 continue
             r = json.loads(line)
-            if r.get("symbol") == symbol and r.get("timestamp", "") >= cutoff:
+            ts = r.get("timestamp", "")
+            if r.get("symbol") == symbol and lo_str <= ts <= hi_str:
                 results.append(r)
     except Exception:
         pass

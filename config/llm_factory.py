@@ -42,5 +42,9 @@ def create_llm(agent_name: str, output_schema=None, max_tokens_override: int = N
     llm = ChatOpenAI(**kwargs)
 
     if output_schema:
-        return llm.with_structured_output(output_schema)
+        wrapped = llm.with_structured_output(output_schema)
+        # Backtest cache: only enriches in backtest mode (run_context flag).
+        # Live mode passes straight through to ChatOpenAI.
+        from backtest.llm_cache import CachingStructuredLLM
+        return CachingStructuredLLM(wrapped, output_schema, model_name, temperature)
     return llm

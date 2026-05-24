@@ -75,10 +75,19 @@ def fetch_bars(state: TradingState) -> TradingState:
 
     # end_dt = 23:59:59 of as_of so Alpaca's exclusive-end semantics still
     # include the daily bar dated as_of (whose timestamp is 04:00 UTC of as_of).
-    # The defensive filter below catches any bar that nonetheless slips through
-    # with date > as_of.
     end_dt = datetime.combine(as_of, datetime.max.time())
     start_dt = datetime.combine(as_of, datetime.min.time()) - timedelta(days=45)
+
+    # Backtest mode uses the L1 cache so repeated fetches for the same window
+    # don't re-hit Alpaca. Live mode (no as_of_date) skips the cache to ensure
+    # fresh data.
+    if as_of_raw:
+        from backtest.bars_cache import fetch_bars_cached
+        bar_list = fetch_bars_cached(
+            state["symbol"], start_dt, end_dt,
+            timeframe="Day", feed="iex", as_of=as_of,
+        )
+        return {"raw_bars": bar_list}
 
     req = StockBarsRequest(
         symbol_or_symbols=[state["symbol"]],

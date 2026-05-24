@@ -17,8 +17,49 @@ load_dotenv(Path(__file__).resolve().parent / '.env' if (Path(__file__).resolve(
 OUTCOMES_LOG = Path(__file__).parent / "logs" / "decision_outcomes.jsonl"
 
 # Lazy-load Alpaca client only when we need a price
-def _get_current_price(symbol: str):
-    """Fetch latest trade price for symbol. Returns None on failure."""
+def _get_current_price(symbol: str, as_of_date: Optional[str] = None):
+    """Fetch a representative current price for `symbol`.
+
+    Live mode: latest trade price via Alpaca's get_stock_latest_trade.
+
+    Backtest mode (as_of_date provided): the daily close on or before as_of_date.
+    Fetches a small daily-bar window via the same path technical_analyst uses
+    (Alpaca daily bars, end-of-day on as_of) and returns the close of the last
+    bar. NEVER calls get_stock_latest_trade in backtest because that would
+    return current live price (catastrophic leakage)."""
+    if as_of_date:
+        # Backtest path: read close of the daily bar dated <= as_of
+        try:
+            from alpaca.data.historical import StockHistoricalDataClient
+            from alpaca.data.requests import StockBarsRequest
+            from alpaca.data.timeframe import TimeFrame
+            client = StockHistoricalDataClient(
+                os.environ.get('ALPACA_API_KEY_ID'),
+                os.environ.get('ALPACA_SECRET_KEY')
+            )
+            from datetime import date as _date
+            if isinstance(as_of_date, str):
+                as_of = datetime.fromisoformat(as_of_date).date()
+            elif isinstance(as_of_date, _date):
+                as_of = as_of_date
+            else:
+                as_of = datetime.now().date()
+            end_dt = datetime.combine(as_of, datetime.max.time())
+            start_dt = datetime.combine(as_of, datetime.min.time()) - timedelta(days=7)
+            req = StockBarsRequest(
+                symbol_or_symbols=[symbol], timeframe=TimeFrame.Day,
+                start=start_dt, end=end_dt, feed="iex",
+            )
+            resp = client.get_stock_bars(req)
+            bars = [b for b in resp.data.get(symbol, []) if b.timestamp.date() <= as_of]
+            if bars:
+                return float(bars[-1].close)
+            return None
+        except Exception as e:
+            print(f"⚠️  Backtest price fetch failed for {symbol} as_of {as_of_date}: {e}")
+            return None
+
+    # Live mode (unchanged)
     try:
         from alpaca.data.historical import StockHistoricalDataClient
         from alpaca.data.requests import StockLatestTradeRequest
@@ -128,9 +169,11 @@ def run_data_analysts(state: MasterState) -> MasterState:
 def run_sentiment_analysis(state: MasterState) -> MasterState:
     """Phase 1b: Run Sentiment analysis."""
     print("Phase 1b: Analyzing market sentiment and news...")
-    
-    sentiment_result = analyze_enhanced_sentiment(state["symbol"])
-    
+
+    sentiment_result = analyze_enhanced_sentiment(
+        state["symbol"], as_of_date=state.get("as_of_date")
+    )
+
     return {"sentiment_report": sentiment_result}
 
 
@@ -263,19 +306,23 @@ def _compute_price_levels(llm_out: _LLMDecision, entry_price: float,
     )
 
 
-def _load_recent_decisions(symbol: str, days: int = 3) -> list:
-    """Load recent decisions — SQL first, JSONL fallback."""
+def _load_recent_decisions(symbol: str, days: int = 3, as_of_date: Optional[str] = None) -> list:
+    """Load recent decisions — SQL first, JSONL fallback.
+
+    as_of_date (ISO 'YYYY-MM-DD') restricts the window to [as_of-days, as_of]
+    so backtests do not see decisions made after the day being simulated.
+    """
     from db.queries import load_recent_decisions
-    return load_recent_decisions(symbol, days)
+    return load_recent_decisions(symbol, days, as_of_date=as_of_date)
 
 
-def _get_yesterday_context(symbol: str, current_price: float) -> str:
+def _get_yesterday_context(symbol: str, current_price: float, as_of_date: Optional[str] = None) -> str:
     """Build a prompt section describing yesterday's decision and current status."""
-    recent = _load_recent_decisions(symbol, days=2)
+    recent = _load_recent_decisions(symbol, days=2, as_of_date=as_of_date)
     if not recent:
         return ""
-    # Get the most recent prior decision (not today's)
-    today = datetime.now().strftime("%Y-%m-%d")
+    # "Today" is the simulated date in backtest, else wall-clock today
+    today = (as_of_date[:10] if as_of_date else datetime.now().strftime("%Y-%m-%d"))
     prior = [r for r in recent if r["timestamp"][:10] != today]
     if not prior:
         return ""
@@ -302,9 +349,9 @@ def _get_yesterday_context(symbol: str, current_price: float) -> str:
     )
 
 
-def _detect_whipsaw(symbol: str) -> str:
+def _detect_whipsaw(symbol: str, as_of_date: Optional[str] = None) -> str:
     """Check if the system has flipped direction 2+ times in 3 trading days."""
-    recent = _load_recent_decisions(symbol, days=4)
+    recent = _load_recent_decisions(symbol, days=4, as_of_date=as_of_date)
     if len(recent) < 2:
         return ""
     # Extract unique daily directions (one per day, latest per day)
@@ -343,7 +390,8 @@ def make_final_decision(state: MasterState) -> MasterState:
     symbol = state["symbol"]
     
     # Fetch current market price for grounding stop_loss/price_target
-    current_price = _get_current_price(symbol)
+    as_of = state.get("as_of_date")
+    current_price = _get_current_price(symbol, as_of_date=as_of)
     price_context = (
         f"CURRENT MARKET PRICE: ${current_price:.2f}\n"
         f"OUTPUT RULES: You output PERCENTAGES for stop_loss_pct and price_target_pct — "
@@ -375,8 +423,8 @@ def make_final_decision(state: MasterState) -> MasterState:
         )
 
     # Yesterday's decision + whipsaw detection
-    yesterday_context = _get_yesterday_context(symbol, current_price) if current_price else ""
-    whipsaw_warning = _detect_whipsaw(symbol)
+    yesterday_context = _get_yesterday_context(symbol, current_price, as_of_date=as_of) if current_price else ""
+    whipsaw_warning = _detect_whipsaw(symbol, as_of_date=as_of)
 
     # Prepare comprehensive context
     agent_summary = f"""AGENT CONSENSUS SUMMARY:
@@ -521,21 +569,32 @@ workflow.add_edge("final_decision", END)
 master_graph = workflow.compile()
 
 
-def run_complete_trading_analysis(symbol: str, variation: dict = None):
+def run_complete_trading_analysis(symbol: str, variation: dict = None,
+                                  as_of_date: Optional[str] = None,
+                                  portfolio_context: Optional[dict] = None):
     """Execute complete trading analysis pipeline.
 
     Args:
         symbol: Ticker to analyze
         variation: Optional dict with keys: rag_chunks_limit, rag_query_n,
                    debate_order, temperature_override
+        as_of_date: ISO 'YYYY-MM-DD'. When set, all data fetches use this as
+                    their cutoff (backtest mode). Defaults to live/today.
+        portfolio_context: Pre-built risk-context dict from SimPortfolio.
+                    When set, risk_gatekeeper uses this instead of live Alpaca.
     """
     print(f"\n{'='*70}")
     print(f"MASTER TRADING ORCHESTRATOR - {symbol}")
-    print(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+          + (f"  (as_of={as_of_date})" if as_of_date else ""))
     print(f"{'='*70}")
 
     calc_id = str(_uuid.uuid4())
     state = {"symbol": symbol, "calculation_run_id": calc_id}
+    if as_of_date:
+        state["as_of_date"] = as_of_date
+    if portfolio_context is not None:
+        state["portfolio_context"] = portfolio_context
     if variation:
         state.update(variation)
 
@@ -571,11 +630,20 @@ def run_complete_trading_analysis(symbol: str, variation: dict = None):
     for agent, conclusion in consensus.items():
         print(f"  {agent}: {conclusion}")
     
-    # Save decision to performance database
-    print(f"\n💾 Saving decision to performance database...")
-    db = TradingPerformanceDB()
-    save_master_decision_to_db(decision, db)
-    
+    # Save decision to performance database (skip in backtest mode — would
+    # pollute live performance stats)
+    try:
+        from backtest.run_context import is_backtest_mode
+        _skip_db = is_backtest_mode()
+    except Exception:
+        _skip_db = False
+    if _skip_db:
+        print(f"\n💾 Performance DB write skipped (backtest mode)")
+    else:
+        print(f"\n💾 Saving decision to performance database...")
+        db = TradingPerformanceDB()
+        save_master_decision_to_db(decision, db)
+
     return decision
 
 

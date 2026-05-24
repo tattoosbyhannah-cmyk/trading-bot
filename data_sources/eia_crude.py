@@ -17,9 +17,9 @@ from data_sources.base_source import BaseFundamentalsSource, FundamentalsSnapsho
 
 class EIACrudeSource(BaseFundamentalsSource):
 
-    def fetch(self, symbol: str) -> FundamentalsSnapshot:
+    def fetch(self, symbol: str, as_of_date: str = None) -> FundamentalsSnapshot:
         try:
-            raw = self._fetch_inventory()
+            raw = self._fetch_inventory(as_of_date=as_of_date)
         except Exception as e:
             return FundamentalsSnapshot(
                 symbol=symbol, asset_class="oil",
@@ -51,7 +51,7 @@ class EIACrudeSource(BaseFundamentalsSource):
              "time_et": "10:30 AM", "description": "Weekly US commercial crude stockpiles"},
         ]
 
-    def _fetch_inventory(self) -> dict:
+    def _fetch_inventory(self, as_of_date: str = None) -> dict:
         url = "https://api.eia.gov/v2/petroleum/stoc/wstk/data/"
         params = {
             "api_key": os.getenv("EIA_API_KEY"),
@@ -62,9 +62,14 @@ class EIACrudeSource(BaseFundamentalsSource):
             "sort[0][direction]": "desc",
             "length": 52,
         }
+        if as_of_date:
+            params["end"] = as_of_date  # EIA: inclusive cutoff
         r = requests.get(url, params=params, timeout=10)
         r.raise_for_status()
         rows = list(reversed(r.json()["response"]["data"]))
+        # Defensive: post-filter in case API returned extra
+        if as_of_date:
+            rows = [row for row in rows if row["period"] <= as_of_date]
         return {"inventory": [{"period": row["period"], "value": int(row["value"])} for row in rows]}
 
     def _compute_signals(self, raw: dict) -> dict:

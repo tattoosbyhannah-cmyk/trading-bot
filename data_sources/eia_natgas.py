@@ -17,9 +17,9 @@ from data_sources.base_source import BaseFundamentalsSource, FundamentalsSnapsho
 
 class EIANatgasSource(BaseFundamentalsSource):
 
-    def fetch(self, symbol: str) -> FundamentalsSnapshot:
+    def fetch(self, symbol: str, as_of_date: str = None) -> FundamentalsSnapshot:
         try:
-            raw = self._fetch_storage()
+            raw = self._fetch_storage(as_of_date=as_of_date)
         except Exception as e:
             return FundamentalsSnapshot(
                 symbol=symbol, asset_class="natgas",
@@ -51,7 +51,7 @@ class EIANatgasSource(BaseFundamentalsSource):
              "time_et": "10:30 AM", "description": "Weekly Lower 48 working gas inventory"},
         ]
 
-    def _fetch_storage(self) -> dict:
+    def _fetch_storage(self, as_of_date: str = None) -> dict:
         url = "https://api.eia.gov/v2/natural-gas/stor/wkly/data/"
         params = {
             "api_key": os.getenv("EIA_API_KEY"),
@@ -63,9 +63,13 @@ class EIANatgasSource(BaseFundamentalsSource):
             "sort[0][direction]": "desc",
             "length": 52,
         }
+        if as_of_date:
+            params["end"] = as_of_date  # EIA: inclusive cutoff
         r = requests.get(url, params=params, timeout=10)
         r.raise_for_status()
         rows = list(reversed(r.json()["response"]["data"]))
+        if as_of_date:
+            rows = [row for row in rows if row["period"] <= as_of_date]
         return {"storage": [{"period": row["period"], "value": int(row["value"])} for row in rows]}
 
     def _compute_signals(self, raw: dict) -> dict:

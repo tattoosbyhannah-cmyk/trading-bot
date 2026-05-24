@@ -165,10 +165,22 @@ def log_agent_call(agent_name, model_lane=None):
 
 
 def _write(entry):
-    """Write to both JSONL and Postgres. Logging must never break the pipeline."""
-    # JSONL (always)
+    """Write to both JSONL and Postgres. Logging must never break the pipeline.
+
+    Backtest isolation: when a backtest_run_id is active, JSONL routes to
+    logs/backtest_runs/{run_id}/agent_calls.jsonl. The Postgres write below
+    is handled by db.log_writer (which also checks _is_backtest()) and will
+    be a no-op in backtest mode."""
+    # JSONL (always; routed to backtest dir when active)
+    target = LOG_FILE
     try:
-        with open(LOG_FILE, "a") as f:
+        from backtest.run_context import is_backtest_mode, backtest_run_dir
+        if is_backtest_mode():
+            target = backtest_run_dir() / "agent_calls.jsonl"
+    except Exception:
+        pass
+    try:
+        with open(target, "a") as f:
             f.write(json.dumps(entry, default=str) + "\n")
     except Exception as e:
         print(f"[agent_logger] Failed to write JSONL: {e}")

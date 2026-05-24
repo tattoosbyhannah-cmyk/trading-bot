@@ -17,9 +17,9 @@ from data_sources.base_source import BaseFundamentalsSource, FundamentalsSnapsho
 
 class FREDGoldSource(BaseFundamentalsSource):
 
-    def fetch(self, symbol: str) -> FundamentalsSnapshot:
+    def fetch(self, symbol: str, as_of_date: str = None) -> FundamentalsSnapshot:
         try:
-            raw = self._fetch_macro()
+            raw = self._fetch_macro(as_of_date=as_of_date)
         except Exception as e:
             return FundamentalsSnapshot(
                 symbol=symbol, asset_class="gold",
@@ -55,27 +55,36 @@ class FREDGoldSource(BaseFundamentalsSource):
              "time_et": "8:30 AM", "description": "Monthly non-farm payrolls"},
         ]
 
-    def _fred_latest(self, series_id: str, lookback: int = 60) -> list:
-        r = requests.get("https://api.stlouisfed.org/fred/series/observations", params={
+    def _fred_latest(self, series_id: str, lookback: int = 60,
+                       as_of_date: str = None) -> list:
+        params = {
             "series_id": series_id,
             "api_key": os.getenv("FRED_API_KEY"),
             "file_type": "json",
             "sort_order": "desc",
             "limit": lookback,
-        }, timeout=10)
+        }
+        if as_of_date:
+            params["observation_end"] = as_of_date  # FRED: inclusive cutoff
+        r = requests.get(
+            "https://api.stlouisfed.org/fred/series/observations",
+            params=params, timeout=10,
+        )
         r.raise_for_status()
         result = []
         for o in r.json().get("observations", []):
             if o["value"] != ".":
+                if as_of_date and o["date"] > as_of_date:
+                    continue
                 result.append({"date": o["date"], "value": float(o["value"])})
         return list(reversed(result))
 
-    def _fetch_macro(self) -> dict:
+    def _fetch_macro(self, as_of_date: str = None) -> dict:
         return {
-            "dxy": self._fred_latest("DTWEXBGS", 60),
-            "real_yield_10y": self._fred_latest("DFII10", 60),
-            "nominal_10y": self._fred_latest("DGS10", 60),
-            "breakeven_10y": self._fred_latest("T10YIE", 60),
+            "dxy": self._fred_latest("DTWEXBGS", 60, as_of_date=as_of_date),
+            "real_yield_10y": self._fred_latest("DFII10", 60, as_of_date=as_of_date),
+            "nominal_10y": self._fred_latest("DGS10", 60, as_of_date=as_of_date),
+            "breakeven_10y": self._fred_latest("T10YIE", 60, as_of_date=as_of_date),
         }
 
     def _compute_signals(self, raw: dict) -> dict:

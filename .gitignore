@@ -47,3 +47,9 @@ venv/
 chromadb-data*/
 __pycache__/
 *.pre-*
+
+# Claude Code local state
+.claude/
+
+# Backtest runtime caches (regenerable from Alpaca)
+backtest/cache/

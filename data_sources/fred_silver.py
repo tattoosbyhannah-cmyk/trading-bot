@@ -25,9 +25,9 @@ class FREDSilverSource(BaseFundamentalsSource):
         # Silver shares most macro drivers with gold
         self._gold_source = FREDGoldSource()
 
-    def fetch(self, symbol: str) -> FundamentalsSnapshot:
+    def fetch(self, symbol: str, as_of_date: str = None) -> FundamentalsSnapshot:
         # Start with gold's macro signals
-        gold_snap = self._gold_source.fetch(symbol)
+        gold_snap = self._gold_source.fetch(symbol, as_of_date=as_of_date)
         if gold_snap.error:
             return FundamentalsSnapshot(
                 symbol=symbol, asset_class="silver",
@@ -38,7 +38,7 @@ class FREDSilverSource(BaseFundamentalsSource):
 
         # Add silver-specific: industrial production index
         try:
-            ip_data = self._fetch_industrial_production()
+            ip_data = self._fetch_industrial_production(as_of_date=as_of_date)
             gold_snap.signals["industrial_production_trend"] = ip_data["trend"]
             gold_snap.signals["ip_latest"] = ip_data["latest"]
         except Exception:
@@ -62,17 +62,24 @@ class FREDSilverSource(BaseFundamentalsSource):
         })
         return cal
 
-    def _fetch_industrial_production(self) -> dict:
+    def _fetch_industrial_production(self, as_of_date: str = None) -> dict:
         """Fetch FRED Industrial Production Index (INDPRO)."""
-        r = requests.get("https://api.stlouisfed.org/fred/series/observations", params={
+        params = {
             "series_id": "INDPRO",
             "api_key": os.getenv("FRED_API_KEY"),
             "file_type": "json",
             "sort_order": "desc",
             "limit": 6,
-        }, timeout=10)
+        }
+        if as_of_date:
+            params["observation_end"] = as_of_date
+        r = requests.get(
+            "https://api.stlouisfed.org/fred/series/observations",
+            params=params, timeout=10,
+        )
         r.raise_for_status()
-        obs = [o for o in r.json().get("observations", []) if o["value"] != "."]
+        obs = [o for o in r.json().get("observations", [])
+               if o["value"] != "." and (not as_of_date or o["date"] <= as_of_date)]
         if len(obs) < 3:
             return {"trend": "insufficient", "latest": None}
         latest = float(obs[0]["value"])

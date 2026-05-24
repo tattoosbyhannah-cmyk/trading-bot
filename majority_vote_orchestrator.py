@@ -185,7 +185,7 @@ def _write_playbook_entry(symbol: str, majority_direction: str, best_run: dict):
 
 
 def _build_hold_audit(symbol: str, results: list, vote_counts: dict,
-                       directions: list) -> dict:
+                       directions: list, as_of_date: str = None) -> dict:
     """Diagnose WHICH gate caused this HOLD. Priority order:
       1. no_valid_runs   — every run errored
       2. whipsaw         — _detect_whipsaw flagged direction instability
@@ -205,7 +205,7 @@ def _build_hold_audit(symbol: str, results: list, vote_counts: dict,
     whipsaw_active = False
     try:
         from master_orchestrator import _detect_whipsaw
-        whipsaw_active = bool(_detect_whipsaw(symbol))
+        whipsaw_active = bool(_detect_whipsaw(symbol, as_of_date=as_of_date))
     except Exception:
         pass
 
@@ -273,12 +273,22 @@ def extract_direction(final_decision: str) -> str:
     return "UNKNOWN"
 
 
-def run_majority_vote(symbol: str, num_runs: int = 3, execute: bool = False):
+def run_majority_vote(symbol: str, num_runs: int = 3, execute: bool = False,
+                       as_of_date: str = None, portfolio_context: dict = None):
     """Run the trading pipeline multiple times and take majority vote.
 
     If execute=True, LONG/SHORT decisions are sent to the paper trading
     executor after the vote resolves. HOLD and ERROR results are skipped.
+
+    Backtest args:
+        as_of_date: ISO 'YYYY-MM-DD' cutoff for all data fetches. When set,
+                    pipeline runs in backtest mode and execute=True is rejected
+                    (backtest fills are produced by the backtest runner).
+        portfolio_context: pre-built risk-context dict from SimPortfolio.
     """
+    if as_of_date and execute:
+        raise ValueError("execute=True is not allowed with as_of_date — "
+                         "backtest runs must not place live trades.")
     print(f"\n{'='*70}")
     print(f"MAJORITY VOTE ORCHESTRATOR — {symbol}")
     print(f"Runs: {num_runs} | Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -313,7 +323,11 @@ def run_majority_vote(symbol: str, num_runs: int = 3, execute: bool = False):
         start = time.time()
         try:
             check_kill_switch()
-            decision = run_complete_trading_analysis(symbol, variation=variation)
+            decision = run_complete_trading_analysis(
+                symbol, variation=variation,
+                as_of_date=as_of_date,
+                portfolio_context=portfolio_context,
+            )
             elapsed = time.time() - start
             direction = extract_direction(decision.final_decision)
             decisions[i] = decision
@@ -405,7 +419,9 @@ def run_majority_vote(symbol: str, num_runs: int = 3, execute: bool = False):
     # ("why did 90% of trades die at gate X?"). Empty dict for non-HOLD runs.
     hold_audit_payload = None
     if majority_direction == "HOLD":
-        hold_audit_payload = _build_hold_audit(symbol, results, vote_counts, directions)
+        hold_audit_payload = _build_hold_audit(
+            symbol, results, vote_counts, directions, as_of_date=as_of_date
+        )
         print(f"\n🛑 HOLD AUDIT — blocking_gate: {hold_audit_payload['blocking_gate']}  "
               f"vote_tally: {hold_audit_payload['vote_tally']}")
 
@@ -475,8 +491,21 @@ def run_majority_vote(symbol: str, num_runs: int = 3, execute: bool = False):
             )
 
     # ── Playbook for intraday system ────────────────────────────────────
+    # Backtest isolation: skip live playbook regen. The live playbook drives
+    # the swing executor's intraday symbol-selection — overwriting it from a
+    # backtest run would corrupt tomorrow's actual trading. A future runner
+    # may want to snapshot the would-be entry to logs/backtest_runs/{run_id}/
+    # playbook_snapshots/{date}/{symbol}.json; for now we just skip.
     if best_run:
-        _write_playbook_entry(symbol, majority_direction, best_run)
+        try:
+            from backtest.run_context import is_backtest_mode
+            _bt = is_backtest_mode()
+        except Exception:
+            _bt = False
+        if _bt:
+            print(f"📋 Playbook write skipped (backtest mode)")
+        else:
+            _write_playbook_entry(symbol, majority_direction, best_run)
 
     # ── Paper trade execution ────────────────────────────────────────────
     if execute and best_run and majority_direction in ("LONG", "SHORT"):

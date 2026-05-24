@@ -218,8 +218,24 @@ def evaluate_trade_risk(
 
     risk_context = "\n\n".join(risk_guidance[:8])  # Top 8 risk management insights
 
-    # Live portfolio lookup (replaces old hardcoded mock)
+    # Portfolio context resolution. In backtest mode the caller MUST pass a
+    # pre-built portfolio_context (from SimPortfolio.to_risk_context); falling
+    # back to the live Alpaca account would silently leak the live $100k paper
+    # state into a historical decision. Fail-loud is correct here.
     if portfolio_context is None:
+        try:
+            from backtest.run_context import is_backtest_mode, get_backtest_run_id
+            if is_backtest_mode():
+                raise RuntimeError(
+                    f"risk_gatekeeper.evaluate_trade_risk called in backtest "
+                    f"mode (run_id={get_backtest_run_id()}) without a "
+                    f"portfolio_context. The runner must thread state['portfolio_context'] "
+                    f"= SimPortfolio.to_risk_context(...) into the master orchestrator "
+                    f"to avoid leaking live Alpaca portfolio state into a "
+                    f"historical decision."
+                )
+        except ImportError:
+            pass
         portfolio_context = get_live_portfolio_context(symbol)
 
     prompt = f"""You are a market conditions gatekeeper. You evaluate EXECUTION RISK ONLY.

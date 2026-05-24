@@ -66,10 +66,15 @@ class EnhancedSentimentReport(BaseModel):
 
 # ── Part 2: Multi-Query News Fetch ───────────────────────────────────────────
 
-def fetch_broader_news(symbol: str, hours_back: int = 48) -> tuple:
+def fetch_broader_news(symbol: str, hours_back: int = 48,
+                        as_of_date: Optional[str] = None) -> tuple:
     """Fetch news using expanded asset-group symbol queries.
 
     Returns (articles_list, diagnostics_dict).
+
+    When as_of_date is provided (ISO 'YYYY-MM-DD'), the news window ends at
+    end-of-day(as_of) instead of now() — backtest mode, so future news
+    doesn't leak into a historical decision.
     """
     ac = asset_class(symbol)
 
@@ -90,8 +95,16 @@ def fetch_broader_news(symbol: str, hours_back: int = 48) -> tuple:
         secret_key=os.getenv("ALPACA_SECRET_KEY"),
     )
 
-    start_time = datetime.now() - timedelta(hours=hours_back)
-    end_time = datetime.now()
+    if as_of_date:
+        try:
+            end_time = datetime.fromisoformat(as_of_date).replace(
+                hour=23, minute=59, second=59
+            )
+        except Exception:
+            end_time = datetime.now()
+    else:
+        end_time = datetime.now()
+    start_time = end_time - timedelta(hours=hours_back)
 
     # Alpaca allows comma-separated symbols (up to ~20).
     # Batch into chunks of 10 to stay safe.
@@ -184,9 +197,11 @@ llm_deep = create_llm("sentiment_analyst", output_schema=EnhancedSentimentReport
 # ── Part 3: Analyze with fixed confidence for no-news ────────────────────────
 
 @log_agent_call(agent_name="sentiment_analyst", model_lane="fast")
-def analyze_enhanced_sentiment(symbol: str) -> EnhancedSentimentReport:
+def analyze_enhanced_sentiment(symbol: str, as_of_date: Optional[str] = None) -> EnhancedSentimentReport:
     """Comprehensive sentiment analysis using asset-group news search."""
-    news_articles, diagnostics = fetch_broader_news(symbol, hours_back=48)
+    news_articles, diagnostics = fetch_broader_news(
+        symbol, hours_back=48, as_of_date=as_of_date
+    )
 
     ac = asset_class(symbol)
     context_label = ASSET_CONTEXT.get(ac, symbol)

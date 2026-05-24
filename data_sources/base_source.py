@@ -25,9 +25,17 @@ class BaseFundamentalsSource(ABC):
     """Abstract interface for fundamentals data sources."""
 
     @abstractmethod
-    def fetch(self, symbol: str) -> FundamentalsSnapshot:
+    def fetch(self, symbol: str, as_of_date: str = None) -> FundamentalsSnapshot:
         """Fetch and compute fundamental signals for a symbol.
-        Returns a FundamentalsSnapshot with computed signals and an LLM summary."""
+
+        Args:
+            symbol: Ticker to analyze.
+            as_of_date: Optional ISO 'YYYY-MM-DD'. When provided, sources must
+                drop observations dated after as_of so backtests do not leak
+                future fundamentals into a historical decision.
+
+        Returns a FundamentalsSnapshot with computed signals and an LLM summary.
+        """
         ...
 
     @abstractmethod

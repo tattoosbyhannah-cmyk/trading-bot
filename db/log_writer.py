@@ -3,6 +3,10 @@ Dual Log Writer — writes to both JSONL (backward compat) and Postgres.
 
 If Postgres is unavailable, silently falls back to JSONL-only.
 
+Backtest mode: when backtest/run_context.is_backtest_mode() is True, all
+writes are isolated to logs/backtest_runs/{run_id}/ and Postgres INSERTs
+are skipped entirely. Live audit + decisions tables stay clean.
+
 Usage:
     from db.log_writer import log_reasoning_run, log_decision, log_fill, ...
 """
@@ -16,7 +20,29 @@ LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
 LOG_DIR.mkdir(exist_ok=True)
 
 
+def _is_backtest():
+    """Return True if a backtest_run_id is active."""
+    try:
+        from backtest.run_context import is_backtest_mode
+        return is_backtest_mode()
+    except Exception:
+        return False
+
+
+def _backtest_log_dir():
+    """Return the active backtest run's log dir."""
+    from backtest.run_context import backtest_run_dir
+    return backtest_run_dir()
+
+
 def _append_jsonl(filepath: Path, entry: dict):
+    """Append a JSON line. In backtest mode, rewrite the path to land under
+    logs/backtest_runs/{run_id}/<basename>."""
+    if _is_backtest():
+        try:
+            filepath = _backtest_log_dir() / Path(filepath).name
+        except Exception:
+            pass  # fall back to original path if backtest dir resolution fails
     try:
         with open(filepath, "a") as f:
             f.write(json.dumps(entry, default=str) + "\n")
@@ -25,6 +51,12 @@ def _append_jsonl(filepath: Path, entry: dict):
 
 
 def _pg_available():
+    """Postgres write path is available IFF the DB connection is up AND we're
+    not in backtest mode (backtest writes never touch the live Postgres
+    decisions/reasoning_runs/etc. tables — they'd contaminate aggregate
+    statistics on live trading performance)."""
+    if _is_backtest():
+        return False
     try:
         from db.connection import is_available
         return is_available()

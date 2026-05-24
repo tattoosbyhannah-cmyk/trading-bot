@@ -70,6 +70,7 @@ class FundamentalsReport(BaseModel):
 class FundamentalsState(TypedDict):
     symbol: str
     calculation_run_id: Optional[str]
+    as_of_date: Optional[str]   # ISO 'YYYY-MM-DD'; cutoff for backtest data fetches
     raw_data: Optional[dict]
     signals: Optional[dict]
     fundamentals_report: Optional[FundamentalsReport]
@@ -426,6 +427,7 @@ PROMPT_BUILDERS = {
 def fetch_data(state: FundamentalsState) -> FundamentalsState:
     """Fetch raw data via data source factory (registry-driven)."""
     symbol = state["symbol"]
+    as_of = state.get("as_of_date")
 
     # Try registry-based source lookup first
     try:
@@ -443,13 +445,15 @@ def fetch_data(state: FundamentalsState) -> FundamentalsState:
     try:
         from data_sources.source_factory import get_source
         source = get_source(source_name)
-        snapshot = source.fetch(symbol)
+        snapshot = source.fetch(symbol, as_of_date=as_of)
         return {"raw_data": {
             "_snapshot": snapshot,
             "_source_name": source_name,
         }}
     except Exception as e:
-        # Fallback to legacy inline fetchers
+        # Fallback to legacy inline fetchers — note: these legacy paths do NOT
+        # support as_of_date; they're only reached if the factory path raises,
+        # which shouldn't happen in normal backtest operation.
         ac = asset_class(symbol)
         if ac in FETCHERS:
             try:
