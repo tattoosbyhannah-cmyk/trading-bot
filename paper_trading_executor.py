@@ -677,8 +677,21 @@ class PaperTradingManager:
         except Exception as e:
             logging.warning(f"Failed to cancel existing stops for {symbol}: {e}")
 
-    def flatten_position(self, symbol: str, reason: str = "direction reversal") -> bool:
-        """Close any existing position in a symbol before entering opposite direction."""
+    def flatten_position(self, symbol: str, reason: str = "direction reversal",
+                         wait_timeout_sec: float = 10.0) -> bool:
+        """Close any existing position in a symbol before entering opposite direction.
+
+        Polls until the broker reports qty=0 (or timeout). Returns True only
+        when the position has fully settled to flat. This prevents the
+        flatten-then-short race observed 2026-05-22 on UNG, where the
+        subsequent execute_short_trade hit Alpaca before the close MARKET
+        order had filled — Alpaca saw partial inventory and rejected the
+        SELL as exceeding available shares (code 40310000, "insufficient qty
+        available").
+
+        Callers that proceed regardless of return value risk the same race;
+        check the return value and skip the follow-up entry on False.
+        """
         positions = self.get_current_positions()
         if symbol not in positions or positions[symbol] == 0:
             return True
@@ -688,10 +701,22 @@ class PaperTradingManager:
         try:
             self._cancel_existing_stops(symbol)
             self.broker.close_position(symbol)
-            return True
         except Exception as e:
             print(f"  Failed to flatten {symbol}: {e}")
             return False
+
+        # Poll until position fully settles (broker reports qty=0)
+        deadline = time.time() + wait_timeout_sec
+        while time.time() < deadline:
+            current_qty = self.get_current_positions().get(symbol, 0)
+            if current_qty == 0:
+                return True
+            time.sleep(0.3)
+
+        final_qty = self.get_current_positions().get(symbol, 0)
+        print(f"  [WARN] flatten_position({symbol}) timed out after {wait_timeout_sec}s; "
+              f"broker still shows qty={final_qty} (close order may still settle later)")
+        return False
 
     def set_stop_loss(self, symbol: str, stop_price: float) -> Optional[str]:
         """Submit a STOP_LIMIT order (not plain STOP) to bound the fill price.
@@ -803,15 +828,35 @@ def execute_master_decision(decision: MasterTradingDecision) -> Dict:
     except Exception as e:
         logging.warning(f"_flatten_routed_proxies failed for {symbol}: {e}")
 
-    # Bug 4 fix: Flatten opposite position before entering new direction
+    # Bug 4 fix: Flatten opposite position before entering new direction.
+    # flatten_position now polls until the close MARKET order fully settles
+    # (qty=0 at broker) — prevents the flatten-then-entry race where the
+    # follow-up order hits Alpaca before close inventory settles, gets
+    # rejected as "insufficient qty available" (cf. UNG 2026-05-22).
     if decision.final_decision.upper().startswith("LONG"):
         positions = manager.get_current_positions()
         if symbol in positions and positions[symbol] < 0:
-            manager.flatten_position(symbol, "reversing SHORT → LONG")
+            if not manager.flatten_position(symbol, "reversing SHORT → LONG"):
+                return {
+                    "success": False, "skipped": True,
+                    "reason": "flatten_did_not_settle",
+                    "symbol": symbol,
+                    "current_price": current_price, "spread_bps": spread_bps,
+                    "portfolio_value": manager.get_portfolio_value(),
+                    "timestamp": datetime.now().isoformat(),
+                }
     elif decision.final_decision.upper().startswith("SHORT"):
         positions = manager.get_current_positions()
         if symbol in positions and positions[symbol] > 0:
-            manager.flatten_position(symbol, "reversing LONG → SHORT")
+            if not manager.flatten_position(symbol, "reversing LONG → SHORT"):
+                return {
+                    "success": False, "skipped": True,
+                    "reason": "flatten_did_not_settle",
+                    "symbol": symbol,
+                    "current_price": current_price, "spread_bps": spread_bps,
+                    "portfolio_value": manager.get_portfolio_value(),
+                    "timestamp": datetime.now().isoformat(),
+                }
 
     if decision.final_decision.upper().startswith("LONG") and position_pct > 0:
         # Direct-entry exposure cap: prevents persistent same-direction signals
