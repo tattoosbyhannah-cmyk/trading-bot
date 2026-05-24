@@ -79,6 +79,11 @@ class MasterTradingDecision(BaseModel):
 class MasterState(TypedDict):
     symbol: str
     calculation_run_id: Optional[str]     # UUID for audit trail
+    # Backtest support
+    as_of_date: Optional[str]             # ISO 'YYYY-MM-DD'; cutoff for data fetches
+    portfolio_context: Optional[dict]     # pre-built risk-context dict (SimPortfolio output)
+                                          # When set, risk_gatekeeper uses this instead of
+                                          # querying live Alpaca. See backtest/portfolio_sim.py.
     # Variation parameters (set per vote run for diversity)
     rag_chunks_limit: Optional[int]       # max chunks for prompt (default 8)
     rag_query_n: Optional[int]            # n_results per collection query (default 2)
@@ -111,6 +116,7 @@ def run_data_analysts(state: MasterState) -> MasterState:
     analyst_result = dual_graph.invoke({
         "symbol": state["symbol"],
         "calculation_run_id": calc_id,
+        "as_of_date": state.get("as_of_date"),
     })
     
     return {
@@ -190,11 +196,15 @@ def run_risk_validation(state: MasterState) -> MasterState:
     else:
         base_stop_loss = 6.0  # Fallback when ATR unavailable
 
+    # In backtest mode, MasterState["portfolio_context"] is pre-built from
+    # SimPortfolio.to_risk_context(...). In live mode it's None and
+    # evaluate_trade_risk falls back to get_live_portfolio_context (Alpaca).
     risk_result = evaluate_trade_risk(
         state["symbol"],
         recommended_action,
         base_position_size,
-        base_stop_loss
+        base_stop_loss,
+        portfolio_context=state.get("portfolio_context"),
     )
 
     return {"risk_assessment": risk_result}

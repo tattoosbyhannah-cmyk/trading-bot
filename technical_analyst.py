@@ -39,26 +39,61 @@ class TechnicalReport(BaseModel):
 class TradingState(TypedDict):
     symbol: str
     calculation_run_id: Optional[str]
+    # Backtest support: when provided, fetch_bars windows ending at this date.
+    # ISO 'YYYY-MM-DD' string. None / absent → live mode (uses today).
+    as_of_date: Optional[str]
     raw_bars: Optional[list]
     indicators: Optional[dict]
     technical_report: Optional[TechnicalReport]
 
 
 def fetch_bars(state: TradingState) -> TradingState:
+    """Fetch 45 days of daily bars ending at as_of_date (or today if absent).
+
+    The end-date is what makes backtest possible: with no upper bound the
+    LLM would see future bars. Setting end ensures the technical_report
+    reflects only information available at the historical decision point.
+    feed='iex' for consistency with the rest of the data layer
+    (see brokers/alpaca_broker.py get_latest_quote DELAYED_SIP rationale).
+    """
     client = StockHistoricalDataClient(
         api_key=os.getenv("ALPACA_API_KEY_ID"),
         secret_key=os.getenv("ALPACA_SECRET_KEY"),
     )
+    # Resolve as_of_date: TradingState may pass an ISO date string or None.
+    as_of_raw = state.get("as_of_date")
+    if as_of_raw:
+        from datetime import date as _date
+        if isinstance(as_of_raw, str):
+            as_of = datetime.fromisoformat(as_of_raw).date()
+        elif isinstance(as_of_raw, _date):
+            as_of = as_of_raw
+        else:
+            as_of = datetime.now().date()
+    else:
+        as_of = datetime.now().date()
+
+    # end_dt = 23:59:59 of as_of so Alpaca's exclusive-end semantics still
+    # include the daily bar dated as_of (whose timestamp is 04:00 UTC of as_of).
+    # The defensive filter below catches any bar that nonetheless slips through
+    # with date > as_of.
+    end_dt = datetime.combine(as_of, datetime.max.time())
+    start_dt = datetime.combine(as_of, datetime.min.time()) - timedelta(days=45)
+
     req = StockBarsRequest(
         symbol_or_symbols=[state["symbol"]],
         timeframe=TimeFrame.Day,
-        start=datetime.now() - timedelta(days=45),
+        start=start_dt,
+        end=end_dt,
+        feed="iex",
     )
     bars = client.get_stock_bars(req)
+    # Defensive: even with end set, never let a bar dated AFTER as_of slip in
     bar_list = [
         {"date": str(b.timestamp.date()), "o": b.open, "h": b.high,
          "l": b.low, "c": b.close, "v": b.volume}
         for b in bars.data.get(state["symbol"], [])
+        if b.timestamp.date() <= as_of
     ]
     return {"raw_bars": bar_list}
 

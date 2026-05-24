@@ -16,6 +16,9 @@ from fundamentals_analyst import graph as fundamentals_graph, FundamentalsReport
 class DualAnalysisState(TypedDict):
     symbol: str
     calculation_run_id: Optional[str]
+    # Backtest support — propagated to technical_graph (and future
+    # fundamentals_graph) so all data fetches respect the historical cutoff.
+    as_of_date: Optional[str]
     technical_report: Optional[TechnicalReport]
     fundamentals_report: Optional[FundamentalsReport]
     summary: Optional[str]
@@ -30,6 +33,7 @@ def run_technical(state: DualAnalysisState) -> DualAnalysisState:
     result = technical_graph.invoke({
         "symbol": state["symbol"],
         "calculation_run_id": calc_id,
+        "as_of_date": state.get("as_of_date"),
     })
     return {"technical_report": result["technical_report"]}
 
@@ -43,6 +47,7 @@ def run_fundamentals(state: DualAnalysisState) -> DualAnalysisState:
     result = fundamentals_graph.invoke({
         "symbol": state["symbol"],
         "calculation_run_id": calc_id,
+        "as_of_date": state.get("as_of_date"),
     })
     return {"fundamentals_report": result["fundamentals_report"]}
 
