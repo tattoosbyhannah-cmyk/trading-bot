@@ -53,3 +53,6 @@ __pycache__/
 
 # Backtest runtime caches (regenerable from Alpaca)
 backtest/cache/
+
+# ChromaDB working copies / rollbacks
+chromadb-data.*/
