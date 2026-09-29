@@ -488,3 +488,16 @@ sources:
     ingested: true
     chunk_count: 325
     published_date: '2014-01-01'
+  algo_trading_rough_ready:
+    title: A Rough-and-Ready Guide to Algorithmic Trading
+    authors:
+    - Vivek Krishnamoorthy
+    - Ashutosh Dave
+    authority_tier: 3
+    source_class: practitioner_book
+    asset_classes:
+    - general
+    collection: methodology
+    file: rag-wave-4/algo_trading_rough_ready.pdf
+    ingested: true
+    chunk_count: 87
